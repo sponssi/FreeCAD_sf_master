@@ -77,6 +77,8 @@
         <file>icons/Sketcher_Sketch.svg</file>
         <file>icons/Sketcher_Trimming.svg</file>
         <file>icons/Sketcher_ViewSketch.svg</file>
+	<file>icons/Sketcher_BreakLine.svg</file>
+	<file>icons/Sketcher_SplitLine.svg</file>
         <file>icons/small/Constraint_Concentric_sm.xpm</file>
         <file>icons/small/Constraint_EqualLength_sm.xpm</file>
         <file>icons/small/Constraint_ExternalAngle_sm.xpm</file>
@@ -124,4 +126,4 @@
         <file>translations/Sketcher_zh-CN.qm</file>
         <file>translations/Sketcher_zh-TW.qm</file>
     </qresource>
-</RCC> 
+</RCC>

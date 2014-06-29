@@ -126,7 +126,7 @@ CmdSketcherBreakLine::CmdSketcherBreakLine()
     sToolTipText    = QT_TR_NOOP("Breakes the currently selected line into two gap separated lines");
     sWhatsThis      = sToolTipText;
     sStatusTip      = sToolTipText;
-    sPixmap         = "Sketcher_AlterConstruction";
+    sPixmap         = "Sketcher_BreakLine";
     sAccel          = "";
     eType           = ForEdit;
 }
@@ -153,7 +153,7 @@ CmdSketcherSplitLine::CmdSketcherSplitLine()
     sToolTipText    = QT_TR_NOOP("Splits the currently selected line into two connected lines");
     sWhatsThis      = sToolTipText;
     sStatusTip      = sToolTipText;
-    sPixmap         = "Sketcher_AlterConstruction";
+    sPixmap         = "Sketcher_SplitLine";
     sAccel          = "";
     eType           = ForEdit;
 }
