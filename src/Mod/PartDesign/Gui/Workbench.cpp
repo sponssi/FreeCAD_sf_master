@@ -169,6 +169,10 @@ Gui::MenuItem* Workbench::setupMenuBar() const
     geom->setCommand("Sketcher geometries");
     SketcherGui::addSketcherWorkbenchGeometries( *geom );
 
+    *geom << "Separator"
+	  << "Sketcher_BreakLine"
+	  << "Sketcher_SplitLine";
+
     Gui::MenuItem* cons = new Gui::MenuItem();
     cons->setCommand("Sketcher constraints");
     SketcherGui::addSketcherWorkbenchConstraints( *cons );
@@ -228,6 +232,10 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
     Gui::ToolBarItem* geom = new Gui::ToolBarItem(root);
     geom->setCommand("Sketcher geometries");
     SketcherGui::addSketcherWorkbenchGeometries( *geom );
+
+    *geom << "Separator"
+	  << "Sketcher_BreakLine"
+	  << "Sketcher_SplitLine";
 
     Gui::ToolBarItem* cons = new Gui::ToolBarItem(root);
     cons->setCommand("Sketcher constraints");

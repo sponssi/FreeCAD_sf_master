@@ -114,6 +114,59 @@ bool CmdSketcherToggleConstruction::isActive(void)
     return isAlterGeoActive( getActiveGuiDocument() );
 }
 
+/* Break line =======================================================*/
+DEF_STD_CMD_A(CmdSketcherBreakLine);
+
+CmdSketcherBreakLine::CmdSketcherBreakLine()
+    :Command("Sketcher_BreakLine")
+{
+    sAppModule      = "Sketcher";
+    sGroup          = QT_TR_NOOP("Sketcher");
+    sMenuText       = QT_TR_NOOP("Break a line");
+    sToolTipText    = QT_TR_NOOP("Breakes the currently selected line into two gap separated lines");
+    sWhatsThis      = sToolTipText;
+    sStatusTip      = sToolTipText;
+    sPixmap         = "Sketcher_AlterConstruction";
+    sAccel          = "";
+    eType           = ForEdit;
+}
+
+void CmdSketcherBreakLine::activated(int iMsg)
+{
+
+}
+
+bool CmdSketcherBreakLine::isActive(void)
+{
+    return isAlterGeoActive( getActiveGuiDocument() );
+}
+
+/* Constrain commands =======================================================*/
+DEF_STD_CMD_A(CmdSketcherSplitLine);
+
+CmdSketcherSplitLine::CmdSketcherSplitLine()
+    :Command("Sketcher_SplitLine")
+{
+    sAppModule      = "Sketcher";
+    sGroup          = QT_TR_NOOP("Sketcher");
+    sMenuText       = QT_TR_NOOP("Split a line");
+    sToolTipText    = QT_TR_NOOP("Splits the currently selected line into two connected lines");
+    sWhatsThis      = sToolTipText;
+    sStatusTip      = sToolTipText;
+    sPixmap         = "Sketcher_AlterConstruction";
+    sAccel          = "";
+    eType           = ForEdit;
+}
+
+void CmdSketcherSplitLine::activated(int iMsg)
+{
+
+}
+
+bool CmdSketcherSplitLine::isActive(void)
+{
+    return isAlterGeoActive( getActiveGuiDocument() );
+}
 
 
 }
@@ -124,5 +177,7 @@ void CreateSketcherCommandsAlterGeo(void)
     Gui::CommandManager &rcCmdMgr = Gui::Application::Instance->commandManager();
 
     rcCmdMgr.addCommand(new CmdSketcherToggleConstruction());
+    rcCmdMgr.addCommand(new CmdSketcherBreakLine());
+    rcCmdMgr.addCommand(new CmdSketcherSplitLine());
 }
 
