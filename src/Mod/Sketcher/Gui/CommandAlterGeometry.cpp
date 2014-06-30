@@ -38,6 +38,8 @@
 
 #include "ViewProviderSketch.h"
 
+#include <Base/Console.h> // For debug, remove once working ok
+
 using namespace std;
 using namespace SketcherGui;
 using namespace Sketcher;
@@ -53,6 +55,11 @@ bool isAlterGeoActive(Gui::Document *doc)
                     return true;
     return false;
 }
+
+void getIdsFromName(const std::string &name, const Sketcher::SketchObject* Obj,
+                    int &GeoId, PointPos &PosId);
+
+bool isEdge(int GeoId, PointPos PosId);
 
 namespace SketcherGui {
 
@@ -133,7 +140,8 @@ CmdSketcherBreakLine::CmdSketcherBreakLine()
 
 void CmdSketcherBreakLine::activated(int iMsg)
 {
-
+    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Not implemented"),
+        QObject::tr("Command not implemented yet, please try Sketcher_SplitPoint."));
 }
 
 bool CmdSketcherBreakLine::isActive(void)
@@ -160,7 +168,87 @@ CmdSketcherSplitLine::CmdSketcherSplitLine()
 
 void CmdSketcherSplitLine::activated(int iMsg)
 {
-
+    Base::Console().Message("SplitLine, iMsg=%i\n", iMsg);
+    
+    // get the selection
+    std::vector<Gui::SelectionObject> selection = getSelection().getSelectionEx();
+    
+    // only one sketch with its subelements are allowed to be selected
+    if (selection.size() != 1) {
+        QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("Select an edge from the sketch."));
+        return;
+    }
+    
+    Base::Console().Message("selection: getDocName=%s, getFeatName=%s, getTypeName=%s\n", selection[0].getDocName(), selection[0].getFeatName(), selection[0].getTypeName());
+    
+    // get the needed lists and objects
+    const std::vector<std::string> &SubNames = selection[0].getSubNames();
+    Sketcher::SketchObject* Obj = dynamic_cast<Sketcher::SketchObject*>(selection[0].getObject());
+    
+    // Check that only one item is selected
+    if (SubNames.size() != 1) {
+        QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("Select exactly one line from the sketch"));
+        return;
+    }
+    
+    int GeoId1;
+    Sketcher::PointPos PosId1;
+    getIdsFromName(SubNames[0], Obj, GeoId1, PosId1);
+    
+    Base::Console().Message("SubName[0]=%s, GeoId1=%i, PosId1=%i\n", SubNames[0].c_str(), GeoId1, PosId1);
+    
+    // Check that the line is an edge
+    if (!isEdge(GeoId1, PosId1)) {
+	QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("Select exactly one line from the sketch"));
+	return;
+    }
+    
+    // Check that the line is not external
+    if (GeoId1 < 0) {
+	QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("External or reference geometry selected."));
+	return;
+    }
+   
+    const Part::Geometry * geom = Obj->getGeometry(GeoId1);
+    Base::Console().Message("geom->getTypeId().getName(): %s\n", geom->getTypeId().getName());
+    
+    if (geom->getTypeId() == Part::GeomLineSegment::getClassTypeId()) {
+	const Part::GeomLineSegment *lineSeg;
+	lineSeg = dynamic_cast<const Part::GeomLineSegment*>(geom);
+	Base::Vector3d startPoint = lineSeg->getStartPoint();
+	Base::Vector3d endPoint = lineSeg->getEndPoint();
+	
+	Base::Console().Message("startPoint: x=%f, y=%f, z=%f\n", startPoint.x, startPoint.y, startPoint.z);
+	Base::Console().Message("endPoint: x=%f, y=%f, z=%f\n", endPoint.x, endPoint.y, endPoint.z);
+	
+	// Initially midpoint as the split point
+	Base::Vector3d splitPoint = startPoint + (endPoint-startPoint) * 0.5;
+	
+	Base::Console().Message("splitPoint: x=%f, y=%f, z=%f\n", splitPoint.x, splitPoint.y, splitPoint.z);
+	
+	// Undo sequence start
+	Gui::Command::openCommand("Split line");
+	
+	// Add the new lines
+	Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.%s.addGeometry(Part.Line(App.Vector(%f,%f,0), App.Vector(%f,%f,0)))", selection[0].getFeatName(), startPoint.x, startPoint.y, splitPoint.x, splitPoint.y);
+	Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.%s.addGeometry(Part.Line(App.Vector(%f,%f,0), App.Vector(%f,%f,0)))", selection[0].getFeatName(), splitPoint.x, splitPoint.y, endPoint.x, endPoint.y);
+	
+	// Remove the original line
+	Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.%s.delGeometry(%i)", selection[0].getFeatName(), GeoId1);
+	
+	Gui::Command::commitCommand();
+	Gui::Command::updateActive();
+    }
+    else {
+	QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("Invalid TypeId."));
+    }
+    
+    return;
 }
 
 bool CmdSketcherSplitLine::isActive(void)
