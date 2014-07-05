@@ -1714,17 +1714,21 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		if (relatedGeoId == 1) {
 		    if (newConstP->FirstPos == Sketcher::start) {
 			newConstP->First = segId1;
+			newConstVec.push_back(newConstP);
 		    }
 		    else if (newConstP->FirstPos == Sketcher::end) {
 			newConstP->First = segId2;
+			newConstVec.push_back(newConstP);
 		    }
 		}
 		else if (relatedGeoId == 2) {
 		    if (newConstP->SecondPos == Sketcher::start) {
 			newConstP->Second = segId1;
+			newConstVec.push_back(newConstP);
 		    }
 		    else if (newConstP->SecondPos == Sketcher::end) {
 			newConstP->Second = segId2;
+			newConstVec.push_back(newConstP);
 		    }
 		}
 		break;
@@ -1736,10 +1740,30 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		newConstP = (*it)->clone();
 		newConstP->First = segId2;
 		newConstP->Name = ""; // Prevent double names
+		newConstVec.push_back(newConstP);
+		break;
+	    case Sketcher::Parallel:
+		if (relatedGeoId == 1) {
+		    newConstP->First = segId1;
+		    newConstVec.push_back(newConstP);
+		    
+		    newConstP = (*it)->clone();
+		    newConstP->First = segId2;
+		    newConstP->Name = ""; // Prevent double names
+		    newConstVec.push_back(newConstP);
+		}
+		else if (relatedGeoId == 2) {
+		    newConstP->Second = segId1;
+		    newConstVec.push_back(newConstP);
+		    
+		    newConstP = (*it)->clone();
+		    newConstP->Second = segId2;
+		    newConstP->Name = ""; // Prevent double names
+		    newConstVec.push_back(newConstP);
+		}
 		break;
 	}
 	
-	newConstVec.push_back(newConstP);
 	newConstP = 0;
     }
     
