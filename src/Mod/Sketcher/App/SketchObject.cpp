@@ -1728,6 +1728,15 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    }
 		}
 		break;
+	    case Sketcher::Horizontal:
+	    case Sketcher::Vertical:
+		newConstP->First = segId1;
+		newConstVec.push_back(newConstP);
+		
+		newConstP = (*it)->clone();
+		newConstP->First = segId2;
+		newConstP->Name = ""; // Prevent double names
+		break;
 	}
 	
 	newConstVec.push_back(newConstP);
