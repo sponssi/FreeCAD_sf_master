@@ -55,9 +55,13 @@
 #include "SketchObjectPy.h"
 #include "Sketch.h"
 
+// For debug
+#include <Base/Console.h>
+
 using namespace Sketcher;
 using namespace Base;
 
+void printConstraintInfo(const Sketcher::Constraint * c);
 
 PROPERTY_SOURCE(Sketcher::SketchObject, Part::Part2DObject)
 
@@ -1690,6 +1694,8 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
     std::vector<Constraint *> newConstVec;
     int relatedGeoId = 0;
     
+    bool parallelAdded = false; // to avoid adding redundant constraints
+    
     // Find the constraints of the original line and apply them to the new segments
     const std::vector<Constraint *> &constraints = this->Constraints.getValues();
     
@@ -1747,19 +1753,27 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    newConstP->First = segId1;
 		    newConstVec.push_back(newConstP);
 		    
-		    newConstP = (*it)->clone();
-		    newConstP->First = segId2;
-		    newConstP->Name = ""; // Prevent double names
-		    newConstVec.push_back(newConstP);
+		    if (!parallelAdded) {
+			newConstP = new Sketcher::Constraint;
+			newConstP->Type = Sketcher::Parallel;
+			newConstP->First = segId1;
+			newConstP->Second = segId2;
+			newConstVec.push_back(newConstP);
+			parallelAdded = true;
+		    }
 		}
 		else if (relatedGeoId == 2) {
 		    newConstP->Second = segId1;
 		    newConstVec.push_back(newConstP);
 		    
-		    newConstP = (*it)->clone();
-		    newConstP->Second = segId2;
-		    newConstP->Name = ""; // Prevent double names
-		    newConstVec.push_back(newConstP);
+		    if (!parallelAdded) {
+			newConstP = new Sketcher::Constraint;
+			newConstP->Type = Sketcher::Parallel;
+			newConstP->First = segId1;
+			newConstP->Second = segId2;
+			newConstVec.push_back(newConstP);
+			parallelAdded = true;
+		    }
 		}
 		break;
 	    case Sketcher::Tangent:
@@ -1899,7 +1913,38 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		// To be implemented
 		break;
 	    case Perpendicular:
-		// To be implemented
+		if (newConstP->FirstPos == Sketcher::none && newConstP->SecondPos == Sketcher::none) {
+		    // Two perpedicular lines, no endpoint constraint
+		    if (relatedGeoId == 1) {
+			newConstP->First = segId1;
+			newConstVec.push_back(newConstP);
+			
+			if (!parallelAdded) {
+			    newConstP = new Sketcher::Constraint;
+			    newConstP->Type = Parallel;
+			    newConstP->First = segId1;
+			    newConstP->Second = segId2;
+			    newConstVec.push_back(newConstP);
+			    parallelAdded = true;
+			}
+		    }
+		    else if (relatedGeoId == 2) {
+			newConstP->Second = segId1;
+			newConstVec.push_back(newConstP);
+			
+			if (!parallelAdded) {
+			    newConstP = new Sketcher::Constraint;
+			    newConstP->Type = Parallel;
+			    newConstP->First = segId1;
+			    newConstP->Second = segId2;
+			    newConstVec.push_back(newConstP);
+			    parallelAdded = true;
+			}
+		    }
+		}
+		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos == Sketcher::none) {
+		    // To be implemented
+		}
 		break;
 	    case Equal:
 		// To be implemented
@@ -1929,6 +1974,21 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
     rebuildVertexIndex();
 }
 
+// debug info
+void printConstraintInfo(const Sketcher::Constraint * c)
+{
+    Base::Console().Message("Constraint info:\n");
+    Base::Console().Message("\tType=%i\n", c->Type);
+    Base::Console().Message("\tName=%s\n", c->Name.c_str());
+    Base::Console().Message("\tFirst=%i\n", c->First);
+    Base::Console().Message("\tFirstPos=%i\n", c->FirstPos);
+    Base::Console().Message("\tSecond=%i\n", c->Second);
+    Base::Console().Message("\tSecondPos=%i\n", c->SecondPos);
+    Base::Console().Message("\tThird=%i\n", c->Third);
+    Base::Console().Message("\tThirdPos=%i\n", c->ThirdPos);
+    Base::Console().Message("\tLabelDistance=%f\n", c->LabelDistance);
+    Base::Console().Message("\tLabelPosition=%f\n", c->LabelPosition);
+}
 // Python Sketcher feature ---------------------------------------------------------
 
 namespace App {
