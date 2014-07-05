@@ -1666,8 +1666,12 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
     
     // Create the new linesegments
     Part::GeomLineSegment newSeg1, newSeg2;
+    
     newSeg1.setPoints(lineSeg->getStartPoint(), splitPoint);
+    newSeg1.Construction = lineSeg->Construction;
+    
     newSeg2.setPoints(splitPoint, lineSeg->getEndPoint());
+    newSeg2.Construction = lineSeg->Construction;
     
     int segId1 = addGeometry(&newSeg1);
     int segId2 = addGeometry(&newSeg2);
