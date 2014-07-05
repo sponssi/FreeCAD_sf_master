@@ -42,8 +42,6 @@
 #include <QCursor>
 #include <QPixmap>
 
-#include <Base/Console.h> // For debug, remove once working ok
-
 using namespace std;
 using namespace SketcherGui;
 using namespace Sketcher;
@@ -160,7 +158,8 @@ void CmdSketcherBreakLine::activated(int iMsg)
 
 bool CmdSketcherBreakLine::isActive(void)
 {
-    return isAlterGeoActive( getActiveGuiDocument() );
+    //return isAlterGeoActive( getActiveGuiDocument() );
+    return false;
 }
 
 /* Split Line =======================================================*/
@@ -207,11 +206,13 @@ static const char *cursor_splitline[]={
 class DrawSketchHandlerSplitLine: public DrawSketchHandler
 {
 public:
-    DrawSketchHandlerSplitLine() : Mode(STATUS_SEEK_First), EditCurve(2) {}
+    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(2) {}
     
     // mode table
     enum SelectMode {
-	STATUS_SEEK_First,
+	STATUS_START,
+	STATUS_NOT_ON_LINE,
+	STATUS_POINT_OK,
 	STATUS_END
     };
     
@@ -219,19 +220,21 @@ public:
     
     virtual void activated(ViewProviderSketch *sketchgui)
     {
+	setCursor(QPixmap(cursor_splitline), 7, 7);
 	if (!checkSelection()) {
 	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
 	}
-	setCursor(QPixmap(cursor_splitline), 7, 7);
     }
     
     virtual void mouseMove(Base::Vector2D onSketchPos)
     {
-	if (Mode == STATUS_SEEK_First) {
+	if (Mode != STATUS_END) {
 	    
 	    // Find the projection of onSketchPoint on the original line
 	    Base::Vector3d onSketchPos3(onSketchPos.fX, onSketchPos.fY, 0);
-	    Base::Vector3d linePosDelta = onSketchPos3; linePosDelta.ProjToLine(onSketchPos3, origLineDir);	    Base::Vector3d linePos3 = onSketchPos3 - startPointDist + linePosDelta;
+	    Base::Vector3d linePosDelta = onSketchPos3;
+	    linePosDelta.ProjToLine(onSketchPos3, origLineDir);
+	    Base::Vector3d linePos3 = onSketchPos3 - startPointDist + linePosDelta;
 	    
 	    // Check that linePos3 is between the endpoints
 	    Base::Vector3d startVec = linePos3 - startPoint;
@@ -242,12 +245,14 @@ public:
 		EditCurve[0] = Base::Vector2D(0.f,0.f);
 		EditCurve[1] = Base::Vector2D(0.f,0.f);
 		resetPositionText();
-		
+		Mode = STATUS_NOT_ON_LINE;
 	    }
 	    else {
 		EditCurve[0] = onSketchPos;
 		EditCurve[1] = Base::Vector2D(linePos3.x, linePos3.y);
 		setPositionText(EditCurve[1]);
+		splitPoint = linePos3;
+		Mode = STATUS_POINT_OK;
 	    }
 	    sketchgui->drawEdit(EditCurve);
 	    applyCursor();
@@ -256,8 +261,7 @@ public:
     
     virtual bool pressButton(Base::Vector2D onSketchPos)
     {
-	if (Mode == STATUS_SEEK_First) {
-	    splitPoint = Base::Vector3d(onSketchPos.fX, onSketchPos.fY, 0);
+	if (Mode == STATUS_POINT_OK) {
 	    Mode = STATUS_END;
 	}
 	
@@ -268,11 +272,15 @@ public:
     {
 
 	if (Mode == STATUS_END) {
+	    Gui::Command::openCommand("Split line");
+	    sketchgui->getSketchObject()->splitLine(lineId, splitPoint);
+	    Gui::Command::commitCommand();
+	    Gui::Command::updateActive();
 	    unsetCursor();
 	    resetPositionText();
 	    EditCurve.clear();
 	    sketchgui->drawEdit(EditCurve);
-	    Base::Console().Message("sketchgui->purgeHandler()\n");
+	    Gui::Selection().clearSelection();
 	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
 	}
 	return true;
@@ -282,7 +290,7 @@ protected:
     SelectMode Mode;
     std::vector<Base::Vector2D> EditCurve;
     Base::Vector3d startPoint, endPoint, origLineDir, startPointDist, splitPoint;
-    
+    int lineId;
     
     bool checkSelection()
     {
@@ -292,11 +300,9 @@ protected:
 	// only one sketch with its subelements are allowed to be selected
 	if (selection.size() != 1) {
 	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
-		QObject::tr("Select an edge from the sketch."));
+		QObject::tr("Select a line from the sketch."));
 	    return false;
 	}
-    
-	Base::Console().Message("selection: getDocName=%s, getFeatName=%s, getTypeName=%s\n", selection[0].getDocName(), selection[0].getFeatName(), selection[0].getTypeName());
     
 	// get the needed lists and objects
 	const std::vector<std::string> &SubNames = selection[0].getSubNames();
@@ -313,8 +319,6 @@ protected:
 	Sketcher::PointPos PosId1;
 	getIdsFromName(SubNames[0], Obj, GeoId1, PosId1);
     
-	Base::Console().Message("SubName[0]=%s, GeoId1=%i, PosId1=%i\n", SubNames[0].c_str(), GeoId1, PosId1);
-    
 	// Check that the line is an edge
 	if (!isEdge(GeoId1, PosId1)) {
 	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
@@ -330,10 +334,9 @@ protected:
 	}
    
 	const Part::Geometry * geom = Obj->getGeometry(GeoId1);
-	Base::Console().Message("geom->getTypeId().getName(): %s\n", geom->getTypeId().getName());
 	if (geom->getTypeId() != Part::GeomLineSegment::getClassTypeId()) {
 	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
-            QObject::tr("Invalid TypeId."));
+            QObject::tr("Selected edge is not a line."));
 	    return false;
 	}
 	
@@ -345,15 +348,8 @@ protected:
 	origLineDir = endPoint - startPoint;
 	startPointDist = startPoint;
 	startPointDist.ProjToLine(startPoint, origLineDir);
-	
-	Base::Console().Message("startPoint: x=%f, y=%f, z=%f\n", startPoint.x, startPoint.y, startPoint.z);
-	Base::Console().Message("endPoint: x=%f, y=%f, z=%f\n", endPoint.x, endPoint.y, endPoint.z);
-	Base::Console().Message("origLineDir: x=%f, y=%f, z=%f\n", origLineDir.x, origLineDir.y, origLineDir.z);
-	
-	// Initially midpoint as the split point
-	//Base::Vector3d splitPoint = startPoint + (endPoint-startPoint) * 0.5;
-	
-	//Base::Console().Message("splitPoint: x=%f, y=%f, z=%f\n", splitPoint.x, splitPoint.y, splitPoint.z);
+		
+	lineId = GeoId1;
 	
 	return true;
     }
@@ -377,38 +373,7 @@ CmdSketcherSplitLine::CmdSketcherSplitLine()
 
 void CmdSketcherSplitLine::activated(int iMsg)
 {
-    Base::Console().Message("SplitLine, iMsg=%i\n", iMsg);
     ActivateHandler(getActiveGuiDocument(), new DrawSketchHandlerSplitLine());
-    
-
-    
-    //if (geom->getTypeId() == Part::GeomLineSegment::getClassTypeId()) {
-	
-/*      
-
-	
-	// Undo sequence start
-	Gui::Command::openCommand("Split line");
-	
-	// Add the new lines
-	Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.%s.addGeometry(Part.Line(App.Vector(%f,%f,0), App.Vector(%f,%f,0)))", selection[0].getFeatName(), startPoint.x, startPoint.y, splitPoint.x, splitPoint.y);
-	Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.%s.addGeometry(Part.Line(App.Vector(%f,%f,0), App.Vector(%f,%f,0)))", selection[0].getFeatName(), splitPoint.x, splitPoint.y, endPoint.x, endPoint.y);
-	
-	// Add a coincident constraint to the split point
-	
-	
-	// Remove the original line
-	Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.%s.delGeometry(%i)", selection[0].getFeatName(), GeoId1);
-	
-	Gui::Command::commitCommand();
-	Gui::Command::updateActive();
-*/
-    //}
-   // else {
-	
-    //}
-    
-    return;
 }
 
 bool CmdSketcherSplitLine::isActive(void)

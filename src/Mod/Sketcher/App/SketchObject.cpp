@@ -1636,6 +1636,7 @@ void SketchObject::getGeoVertexIndex(int VertexId, int &GeoId, PointPos &PosId) 
     PosId = VertexId2PosId[VertexId];
 }
 
+
 int SketchObject::getVertexIndexGeoPos(int GeoId, PointPos PosId) const
 {
     for(int i=0;i<VertexId2GeoId.size();i++) {
@@ -1644,6 +1645,101 @@ int SketchObject::getVertexIndexGeoPos(int GeoId, PointPos PosId) const
     }
 
     return -1;
+}
+
+int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
+{
+    const Part::Geometry * geom = getGeometry(GeoId);
+    if(!geom) {
+	return -1;
+    }
+    if(geom->getTypeId() != Part::GeomLineSegment::getClassTypeId()) {
+	return -2;
+    }
+    const Part::GeomLineSegment * lineSeg = dynamic_cast<const Part::GeomLineSegment*>(geom);
+    
+    // Check that the point is close ehough to the line
+    double dist = splitPoint.DistanceToLine(lineSeg->getStartPoint(), lineSeg->getEndPoint() - lineSeg->getStartPoint());
+    if (dist > 1e-8) {
+	return -3;
+    }
+    
+    // Create the new linesegments
+    Part::GeomLineSegment newSeg1, newSeg2;
+    newSeg1.setPoints(lineSeg->getStartPoint(), splitPoint);
+    newSeg2.setPoints(splitPoint, lineSeg->getEndPoint());
+    
+    int segId1 = addGeometry(&newSeg1);
+    int segId2 = addGeometry(&newSeg2);
+    
+    // Add coincidence between the new line segments
+    Sketcher::Constraint * newConstP = new Sketcher::Constraint;
+    newConstP->Type = Sketcher::Coincident;
+    newConstP->First = segId1;
+    newConstP->FirstPos = Sketcher::end;
+    newConstP->Second = segId2;
+    newConstP->SecondPos = Sketcher::start;
+    
+    addConstraint(newConstP);
+    delete newConstP;
+    
+    std::vector<Constraint *> newConstVec;
+    int relatedGeoId = 0;
+    
+    // Find the constraints of the original line and apply them to the new segments
+    const std::vector<Constraint *> &constraints = this->Constraints.getValues();
+    
+    for(std::vector<Constraint *>::const_iterator it = constraints.begin(); it != constraints.end(); ++it) {
+	if ((*it)->First == GeoId) {
+	    relatedGeoId = 1;
+	}
+	else if ((*it)->Second == GeoId) {
+	    relatedGeoId = 2;
+	}
+	else if ((*it)->Third == GeoId) {
+	    relatedGeoId = 3;
+	}
+	else {
+	    continue;
+	}
+	
+	newConstP = (*it)->clone();
+	
+	switch (newConstP->Type) {
+	    case Sketcher::Coincident:
+		if (relatedGeoId == 1) {
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = segId1;
+		    }
+		    else if (newConstP->FirstPos == Sketcher::end) {
+			newConstP->First = segId2;
+		    }
+		}
+		else if (relatedGeoId == 2) {
+		    if (newConstP->SecondPos == Sketcher::start) {
+			newConstP->Second = segId1;
+		    }
+		    else if (newConstP->SecondPos == Sketcher::end) {
+			newConstP->Second = segId2;
+		    }
+		}
+		break;
+	}
+	
+	newConstVec.push_back(newConstP);
+	newConstP = 0;
+    }
+    
+    addConstraints(newConstVec);
+    
+    delGeometry(GeoId);
+
+    for(std::vector<Constraint *>::iterator it = newConstVec.begin(); it != newConstVec.end(); ++it) {
+	if (*it) delete (*it);
+    }
+
+    Constraints.acceptGeometry(getCompleteGeometry());
+    rebuildVertexIndex();
 }
 
 // Python Sketcher feature ---------------------------------------------------------
