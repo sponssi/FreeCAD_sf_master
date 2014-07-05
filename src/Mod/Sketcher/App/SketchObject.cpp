@@ -1766,7 +1766,20 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		// To be implemented
 		break;
 	    case Distance:
-		if (newConstP->FirstPos == Sketcher::none && newConstP->FirstPos == Sketcher::none) {
+		if (newConstP->First == GeoId && newConstP->Second == GeoId) {
+		    // Endpoints of the original line
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = segId1;
+			newConstP->Second = segId2;
+			newConstVec.push_back(newConstP);
+		    }
+		    else if (newConstP->FirstPos == Sketcher::end) {
+			newConstP->First = segId2;
+			newConstP->Second = segId1;
+			newConstVec.push_back(newConstP);
+		    }
+		}	
+		else if (newConstP->FirstPos == Sketcher::none && newConstP->FirstPos == Sketcher::none) {
 		    // Length of the original line
 		    newConstP->First = segId1;
 		    newConstP->FirstPos = Sketcher::start;
@@ -1825,10 +1838,62 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		}
 		break;
 	    case DistanceX:
-		// To be implemented
-		break;
 	    case DistanceY:
-		// To be implemented
+		if (newConstP->First == GeoId && newConstP->Second == GeoId) {
+		    // Distance of the endpoints of the original line
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = segId1;
+			newConstP->Second = segId2;
+			newConstVec.push_back(newConstP);
+		    }
+		    else if (newConstP->FirstPos == Sketcher::end) {
+			newConstP->First = segId2;
+			newConstP->Second = segId1;
+			newConstVec.push_back(newConstP);
+		    }
+		}
+		else if (newConstP->FirstPos == Sketcher::none && newConstP->SecondPos == Sketcher::none) {
+		    // Distance of the original line
+		    newConstP->First = segId1;
+		    newConstP->FirstPos = Sketcher::start;
+		    newConstP->Second = segId2;
+		    newConstP->SecondPos = Sketcher::end;
+		    newConstVec.push_back(newConstP);
+		}
+		else if (newConstP->First != Constraint::GeoUndef && newConstP->Second == Constraint::GeoUndef) {
+		    // Distance of a point from an axis
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = segId1;
+			newConstVec.push_back(newConstP);
+		    }
+		    else if (newConstP->FirstPos == Sketcher::end) {
+			newConstP->First = segId2;
+			newConstVec.push_back(newConstP);
+		    }
+		}
+		else {
+		    // Distance of two points
+		    if (relatedGeoId == 1) {
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = segId1;
+			    newConstVec.push_back(newConstP);
+			}
+			else if (newConstP->FirstPos == Sketcher::end) {
+			    newConstP->First = segId2;
+			    newConstVec.push_back(newConstP);
+			}
+		    }
+		    else if (relatedGeoId == 2) {
+			if (newConstP->SecondPos == Sketcher::start) {
+			    newConstP->Second = segId1;
+			    newConstVec.push_back(newConstP);
+			}
+			else if (newConstP->SecondPos == Sketcher::end) {
+			    newConstP->Second = segId2;
+			    newConstVec.push_back(newConstP);
+			}
+		    }
+		}
 		break;
 	    case Angle:
 		// To be implemented
