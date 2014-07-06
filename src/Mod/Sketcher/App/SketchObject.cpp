@@ -1699,6 +1699,7 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
     int relatedGeoId = 0;
     
     bool parallelAdded = false; // to avoid adding redundant constraints
+    bool addParallel = false;
     
     // Find the constraints of the original line and apply them to the new segments
     const std::vector<Constraint *> &constraints = this->Constraints.getValues();
@@ -1756,28 +1757,12 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		if (relatedGeoId == 1) {
 		    newConstP->First = segId1;
 		    newConstVec.push_back(newConstP);
-		    
-		    if (!parallelAdded) {
-			newConstP = new Sketcher::Constraint;
-			newConstP->Type = Sketcher::Parallel;
-			newConstP->First = segId1;
-			newConstP->Second = segId2;
-			newConstVec.push_back(newConstP);
-			parallelAdded = true;
-		    }
+		    addParallel = true;
 		}
 		else if (relatedGeoId == 2) {
 		    newConstP->Second = segId1;
 		    newConstVec.push_back(newConstP);
-		    
-		    if (!parallelAdded) {
-			newConstP = new Sketcher::Constraint;
-			newConstP->Type = Sketcher::Parallel;
-			newConstP->First = segId1;
-			newConstP->Second = segId2;
-			newConstVec.push_back(newConstP);
-			parallelAdded = true;
-		    }
+		    addParallel = true;
 		}
 		break;
 	    case Sketcher::Tangent:
@@ -1927,7 +1912,27 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		}
 		break;
 	    case Angle:
-		// To be implemented
+		// TODO: Smarter selelction of the segment
+		if (relatedGeoId == 1) {
+		    if (newConstP->Second == Constraint::GeoUndef) {
+			// Angle to the horizontal axis
+			newConstP->First = segId1;
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		    else {
+			// Angle between two lines
+			newConstP->First = segId1;
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		}
+		else if (relatedGeoId == 2) {
+		    // Angle between two lines
+		    newConstP->Second = segId1;
+		    newConstVec.push_back(newConstP);
+		    addParallel = true;
+		}
 		break;
 	    case Perpendicular:
 		if (newConstP->FirstPos == Sketcher::none && newConstP->SecondPos == Sketcher::none) {
@@ -1935,28 +1940,12 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    if (relatedGeoId == 1) {
 			newConstP->First = segId1;
 			newConstVec.push_back(newConstP);
-			
-			if (!parallelAdded) {
-			    newConstP = new Sketcher::Constraint;
-			    newConstP->Type = Parallel;
-			    newConstP->First = segId1;
-			    newConstP->Second = segId2;
-			    newConstVec.push_back(newConstP);
-			    parallelAdded = true;
-			}
+			addParallel = true;
 		    }
 		    else if (relatedGeoId == 2) {
 			newConstP->Second = segId1;
 			newConstVec.push_back(newConstP);
-			
-			if (!parallelAdded) {
-			    newConstP = new Sketcher::Constraint;
-			    newConstP->Type = Parallel;
-			    newConstP->First = segId1;
-			    newConstP->Second = segId2;
-			    newConstVec.push_back(newConstP);
-			    parallelAdded = true;
-			}
+			addParallel = true;
 		    }
 		}
 		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos == Sketcher::none) {
@@ -1965,28 +1954,12 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 			if (newConstP->FirstPos == Sketcher::start) {
 			    newConstP->First = segId1;
 			    newConstVec.push_back(newConstP);
-			    
-			    if (!parallelAdded) {
-				newConstP = new Sketcher::Constraint;
-				newConstP->Type = Parallel;
-				newConstP->First = segId1;
-				newConstP->Second = segId2;
-				newConstVec.push_back(newConstP);
-				parallelAdded = true;
-			    }
+			    addParallel = true;
 			}
 			else if (newConstP->FirstPos == Sketcher::end) {
 			    newConstP->First = segId2;
 			    newConstVec.push_back(newConstP);
-			    
-			    if (!parallelAdded) {
-				newConstP = new Sketcher::Constraint;
-				newConstP->Type = Parallel;
-				newConstP->First = segId1;
-				newConstP->Second = segId2;
-				newConstVec.push_back(newConstP);
-				parallelAdded = true;
-			    }
+			    addParallel = true;
 			}
 		    }
 		    else if (relatedGeoId == 2) {
@@ -2014,6 +1987,7 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 			    newConstP->Second = segId2;
 			}
 			newConstVec.push_back(newConstP);
+			addParallel = true;
 		    }
 		}
 		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos != Sketcher::none) {
@@ -2022,56 +1996,24 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 			if (newConstP->FirstPos == Sketcher::start) {
 			    newConstP->First = segId1;
 			    newConstVec.push_back(newConstP);
-			    
-			    if (!parallelAdded) {
-				newConstP = new Sketcher::Constraint;
-				newConstP->Type = Parallel;
-				newConstP->First = segId1;
-				newConstP->Second = segId2;
-				newConstVec.push_back(newConstP);
-				parallelAdded = true;
-			    }
+			    addParallel = true;
 			}
 			else if (newConstP->FirstPos == Sketcher::end) {
 			    newConstP->First = segId2;
 			    newConstVec.push_back(newConstP);
-			    
-			    if (!parallelAdded) {
-				newConstP = new Sketcher::Constraint;
-				newConstP->Type = Parallel;
-				newConstP->First = segId1;
-				newConstP->Second = segId2;
-				newConstVec.push_back(newConstP);
-				parallelAdded = true;
-			    }
+			    addParallel = true;
 			}
 		    }
 		    else if (relatedGeoId == 2) {
 			if (newConstP->SecondPos == Sketcher::start) {
 			    newConstP->Second = segId1;
 			    newConstVec.push_back(newConstP);
-			    
-			    if (!parallelAdded) {
-				newConstP = new Sketcher::Constraint;
-				newConstP->Type = Parallel;
-				newConstP->First = segId1;
-				newConstP->Second = segId2;
-				newConstVec.push_back(newConstP);
-				parallelAdded = true;
-			    }
+			    addParallel = true;
 			}
 			else if (newConstP->SecondPos == Sketcher::end) {
 			    newConstP->Second = segId2;
 			    newConstVec.push_back(newConstP);
-			    
-			    if (!parallelAdded) {
-				newConstP = new Sketcher::Constraint;
-				newConstP->Type = Parallel;
-				newConstP->First = segId1;
-				newConstP->Second = segId2;
-				newConstVec.push_back(newConstP);
-				parallelAdded = true;
-			    }
+			    addParallel = true;
 			}
 		    }
 		}
@@ -2127,7 +2069,13 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 	newConstP = 0;
     }
     
-    // TODO: add a common parallel constraint addition here
+    if (addParallel) {
+	newConstP = new Sketcher::Constraint;
+	newConstP->Type = Parallel;
+	newConstP->First = segId1;
+	newConstP->Second = segId2;
+	newConstVec.push_back(newConstP);
+    }
     
     addConstraints(newConstVec);
     
