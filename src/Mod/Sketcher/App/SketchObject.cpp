@@ -61,6 +61,10 @@
 using namespace Sketcher;
 using namespace Base;
 
+//Sketcher::PointPos getClosestEndpoint(const Part::GeomLineSegment * line, Base::Vector3d point);
+
+int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point);
+
 void printConstraintInfo(const Sketcher::Constraint * c);
 
 PROPERTY_SOURCE(Sketcher::SketchObject, Part::Part2DObject)
@@ -2062,7 +2066,42 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		// Add a distance constraint to the other line if it already doesn't have one?
 		break;
 	    case PointOnObject:
-		// To be implemented
+		if (relatedGeoId == 1) {
+		    // Endpoint on some other line
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = segId1;
+			newConstVec.push_back(newConstP);
+		    }
+		    else if (newConstP->FirstPos == Sketcher::end) {
+			newConstP->First = segId2;
+			newConstVec.push_back(newConstP);
+		    }
+		}
+		else if (relatedGeoId == 2) {
+		    // Some other point on line
+		    // Find the closer endpoint
+		    Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
+		    Base::Vector3d dir1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
+		    Base::Vector3d dir2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
+		    Base::Vector3d dir3 = splitPoint - otherPointPos;
+		    if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
+			// otherPointPos not between endpoints
+			if (getCloserPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), otherPointPos) == 1) {
+			    newConstP->Second = segId1;
+			}
+			else {
+			    newConstP->Second = segId2;
+			}
+		    }
+		    else if (dir1*dir3 < 0) {
+			// otherPointPos on segId1
+			newConstP->Second = segId1;
+		    }
+		    else {
+			newConstP->Second = segId2;
+		    }
+		    newConstVec.push_back(newConstP);
+		}
 		break;
 	    case Symmetric:
 		// To be implemented
@@ -2099,6 +2138,32 @@ void printConstraintInfo(const Sketcher::Constraint * c)
     Base::Console().Message("\tLabelDistance=%f\n", c->LabelDistance);
     Base::Console().Message("\tLabelPosition=%f\n", c->LabelPosition);
 }
+
+// Helper functions TODO: move to some place better
+
+// Returns the PointPos of the line segment closer to point
+// SIGSEGV???
+/*Sketcher::PointPos getClosestEndpoint(const Part::GeomLineSegment * line, Base::Vector3d point) {
+    Base::Vector3d distStart = line->getStartPoint() - point;
+    Base::Vector3d distEnd = line->getEndPoint() - point;
+    
+    if (distStart.Length() <= distEnd.Length()) {
+	return Sketcher::start;
+    }
+    else {
+	return Sketcher::end;
+    }
+}*/
+
+// Returns 1 or 2 depending is pt1 or pt2 closer to point
+int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point)
+{
+    Base::Vector3d dist1 = pt1 - point;
+    Base::Vector3d dist2 = pt2 - point;
+   if(dist1.Length() <= dist2.Length()) return 1;
+   else return 2;
+}
+
 // Python Sketcher feature ---------------------------------------------------------
 
 namespace App {
