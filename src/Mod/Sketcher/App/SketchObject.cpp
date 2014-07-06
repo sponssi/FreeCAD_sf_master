@@ -1819,10 +1819,23 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    }
 		    else if (relatedGeoId == 2) {
 			// Distance of some point from the origina line
+			
+			// Find the closer endpoint
 			Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
-			Base::Vector3d dist1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
-			Base::Vector3d dist2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
-			if (dist1.Length() < dist2.Length()) {
+			Base::Vector3d dir1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
+			Base::Vector3d dir2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
+			Base::Vector3d dir3 = splitPoint - otherPointPos;
+			if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
+			    // otherPointPos not between endpoints
+			    if (getCloserPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), otherPointPos) == 1) {
+			    newConstP->Second = segId1;
+			    }
+			    else {
+				newConstP->Second = segId2;
+			    }
+			}
+			else if (dir1*dir3 < 0) {
+			    // otherPointPos on segId1
 			    newConstP->Second = segId1;
 			}
 			else {
@@ -1978,26 +1991,29 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    }
 		    else if (relatedGeoId == 2) {
 			// Some other point on line
+			
 			// Find the closer endpoint
 			Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
-			Base::Vector3d dist1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
-			Base::Vector3d dist2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
-			if (dist1.Length() < dist2.Length()) {
+			Base::Vector3d dir1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
+			Base::Vector3d dir2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
+			Base::Vector3d dir3 = splitPoint - otherPointPos;
+			if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
+			    // otherPointPos not between endpoints
+			    if (getCloserPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), otherPointPos) == 1) {
+			    newConstP->Second = segId1;
+			    }
+			    else {
+				newConstP->Second = segId2;
+			    }
+			}
+			else if (dir1*dir3 < 0) {
+			    // otherPointPos on segId1
 			    newConstP->Second = segId1;
 			}
 			else {
 			    newConstP->Second = segId2;
 			}
 			newConstVec.push_back(newConstP);
-			
-			if (!parallelAdded) {
-			    newConstP = new Sketcher::Constraint;
-			    newConstP->Type = Parallel;
-			    newConstP->First = segId1;
-			    newConstP->Second = segId2;
-			    newConstVec.push_back(newConstP);
-			    parallelAdded = true;
-			}
 		    }
 		}
 		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos != Sketcher::none) {
@@ -2110,6 +2126,8 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 	
 	newConstP = 0;
     }
+    
+    // TODO: add a common parallel constraint addition here
     
     addConstraints(newConstVec);
     
