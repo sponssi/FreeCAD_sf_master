@@ -1943,7 +1943,117 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    }
 		}
 		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos == Sketcher::none) {
-		    // To be implemented
+		    if (relatedGeoId == 1) {
+			// Endpoint on some other line
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = segId1;
+			    newConstVec.push_back(newConstP);
+			    
+			    if (!parallelAdded) {
+				newConstP = new Sketcher::Constraint;
+				newConstP->Type = Parallel;
+				newConstP->First = segId1;
+				newConstP->Second = segId2;
+				newConstVec.push_back(newConstP);
+				parallelAdded = true;
+			    }
+			}
+			else if (newConstP->FirstPos == Sketcher::end) {
+			    newConstP->First = segId2;
+			    newConstVec.push_back(newConstP);
+			    
+			    if (!parallelAdded) {
+				newConstP = new Sketcher::Constraint;
+				newConstP->Type = Parallel;
+				newConstP->First = segId1;
+				newConstP->Second = segId2;
+				newConstVec.push_back(newConstP);
+				parallelAdded = true;
+			    }
+			}
+		    }
+		    else if (relatedGeoId == 2) {
+			// Some other point on line
+			// Find the closer endpoint
+			Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
+			Base::Vector3d dist1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
+			Base::Vector3d dist2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
+			if (dist1.Length() < dist2.Length()) {
+			    newConstP->Second = segId1;
+			}
+			else {
+			    newConstP->Second = segId2;
+			}
+			newConstVec.push_back(newConstP);
+			
+			if (!parallelAdded) {
+			    newConstP = new Sketcher::Constraint;
+			    newConstP->Type = Parallel;
+			    newConstP->First = segId1;
+			    newConstP->Second = segId2;
+			    newConstVec.push_back(newConstP);
+			    parallelAdded = true;
+			}
+		    }
+		}
+		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos != Sketcher::none) {
+		    // Point on point
+		    if (relatedGeoId == 1) {
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = segId1;
+			    newConstVec.push_back(newConstP);
+			    
+			    if (!parallelAdded) {
+				newConstP = new Sketcher::Constraint;
+				newConstP->Type = Parallel;
+				newConstP->First = segId1;
+				newConstP->Second = segId2;
+				newConstVec.push_back(newConstP);
+				parallelAdded = true;
+			    }
+			}
+			else if (newConstP->FirstPos == Sketcher::end) {
+			    newConstP->First = segId2;
+			    newConstVec.push_back(newConstP);
+			    
+			    if (!parallelAdded) {
+				newConstP = new Sketcher::Constraint;
+				newConstP->Type = Parallel;
+				newConstP->First = segId1;
+				newConstP->Second = segId2;
+				newConstVec.push_back(newConstP);
+				parallelAdded = true;
+			    }
+			}
+		    }
+		    else if (relatedGeoId == 2) {
+			if (newConstP->SecondPos == Sketcher::start) {
+			    newConstP->Second = segId1;
+			    newConstVec.push_back(newConstP);
+			    
+			    if (!parallelAdded) {
+				newConstP = new Sketcher::Constraint;
+				newConstP->Type = Parallel;
+				newConstP->First = segId1;
+				newConstP->Second = segId2;
+				newConstVec.push_back(newConstP);
+				parallelAdded = true;
+			    }
+			}
+			else if (newConstP->SecondPos == Sketcher::end) {
+			    newConstP->Second = segId2;
+			    newConstVec.push_back(newConstP);
+			    
+			    if (!parallelAdded) {
+				newConstP = new Sketcher::Constraint;
+				newConstP->Type = Parallel;
+				newConstP->First = segId1;
+				newConstP->Second = segId2;
+				newConstVec.push_back(newConstP);
+				parallelAdded = true;
+			    }
+			}
+		    }
 		}
 		break;
 	    case Equal:
