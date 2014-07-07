@@ -64,6 +64,7 @@ using namespace Base;
 //Sketcher::PointPos getClosestEndpoint(const Part::GeomLineSegment * line, Base::Vector3d point);
 
 int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point);
+Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const Vector3d & endPoint, const Vector3d & splitPoint, const Vector3d & otherPoint);
 
 void printConstraintInfo(const Sketcher::Constraint * c);
 
@@ -1698,7 +1699,7 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
     std::vector<Constraint *> newConstVec;
     int relatedGeoId = 0;
     
-    bool parallelAdded = false; // to avoid adding redundant constraints
+    bool HVAdded = false;
     bool addParallel = false;
     
     // Find the constraints of the original line and apply them to the new segments
@@ -1752,6 +1753,8 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		newConstP->First = segId2;
 		newConstP->Name = ""; // Prevent double names
 		newConstVec.push_back(newConstP);
+		
+		HVAdded = true;
 		break;
 	    case Sketcher::Parallel:
 		if (relatedGeoId == 1) {
@@ -1805,27 +1808,14 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    else if (relatedGeoId == 2) {
 			// Distance of some point from the origina line
 			
-			// Find the closer endpoint
-			Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
-			Base::Vector3d dir1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
-			Base::Vector3d dir2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
-			Base::Vector3d dir3 = splitPoint - otherPointPos;
-			if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
-			    // otherPointPos not between endpoints
-			    if (getCloserPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), otherPointPos) == 1) {
-			    newConstP->Second = segId1;
-			    }
-			    else {
-				newConstP->Second = segId2;
-			    }
-			}
-			else if (dir1*dir3 < 0) {
-			    // otherPointPos on segId1
+			// Find the correct segment to add the constraint to
+			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
 			    newConstP->Second = segId1;
 			}
 			else {
 			    newConstP->Second = segId2;
 			}
+			
 			newConstVec.push_back(newConstP);
 		    }
 		}
@@ -1938,12 +1928,22 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		if (newConstP->FirstPos == Sketcher::none && newConstP->SecondPos == Sketcher::none) {
 		    // Two perpedicular lines, no endpoint constraint
 		    if (relatedGeoId == 1) {
-			newConstP->First = segId1;
+			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->Second, Sketcher::start)) == Sketcher::start) {
+			    newConstP->First = segId1;
+			}
+			else {
+			    newConstP->First = segId2;
+			}
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
 		    else if (relatedGeoId == 2) {
-			newConstP->Second = segId1;
+			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
+			    newConstP->Second = segId1;
+			}
+			else {
+			    newConstP->Second = segId2;
+			}
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
@@ -1965,27 +1965,14 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		    else if (relatedGeoId == 2) {
 			// Some other point on line
 			
-			// Find the closer endpoint
-			Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
-			Base::Vector3d dir1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
-			Base::Vector3d dir2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
-			Base::Vector3d dir3 = splitPoint - otherPointPos;
-			if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
-			    // otherPointPos not between endpoints
-			    if (getCloserPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), otherPointPos) == 1) {
-			    newConstP->Second = segId1;
-			    }
-			    else {
-				newConstP->Second = segId2;
-			    }
-			}
-			else if (dir1*dir3 < 0) {
-			    // otherPointPos on segId1
+			// Find the correct segment to add the constraint to
+			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
 			    newConstP->Second = segId1;
 			}
 			else {
 			    newConstP->Second = segId2;
 			}
+			
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
@@ -2037,27 +2024,14 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 		}
 		else if (relatedGeoId == 2) {
 		    // Some other point on line
-		    // Find the closer endpoint
-		    Base::Vector3d otherPointPos = getPoint(newConstP->First, newConstP->FirstPos);
-		    Base::Vector3d dir1 = getPoint(GeoId, Sketcher::start) - otherPointPos;
-		    Base::Vector3d dir2 = getPoint(GeoId, Sketcher::end) - otherPointPos;
-		    Base::Vector3d dir3 = splitPoint - otherPointPos;
-		    if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
-			// otherPointPos not between endpoints
-			if (getCloserPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), otherPointPos) == 1) {
-			    newConstP->Second = segId1;
-			}
-			else {
-			    newConstP->Second = segId2;
-			}
-		    }
-		    else if (dir1*dir3 < 0) {
-			// otherPointPos on segId1
+		    // Find the correct segment to add the constraint to
+		    if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
 			newConstP->Second = segId1;
-		    }
+			}
 		    else {
 			newConstP->Second = segId2;
 		    }
+			
 		    newConstVec.push_back(newConstP);
 		}
 		break;
@@ -2069,7 +2043,7 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 	newConstP = 0;
     }
     
-    if (addParallel) {
+    if (addParallel && !HVAdded) {
 	newConstP = new Sketcher::Constraint;
 	newConstP->Type = Parallel;
 	newConstP->First = segId1;
@@ -2128,6 +2102,30 @@ int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point)
     Base::Vector3d dist2 = pt2 - point;
    if(dist1.Length() <= dist2.Length()) return 1;
    else return 2;
+}
+
+// Returns on which splitted segment the projection of otherPoint lies on or is closer to
+Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const Vector3d & endPoint, const Vector3d & splitPoint, const Vector3d & otherPoint)
+{
+    Base::Vector3d dir1 = startPoint - otherPoint;
+    Base::Vector3d dir2 = endPoint - otherPoint;
+    Base::Vector3d dir3 = splitPoint - otherPoint;
+    if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
+	// otherPoint not between endpoints
+	if (getCloserPoint(startPoint, endPoint, otherPoint) == 1) {
+	    return Sketcher::start;
+	}
+	else {
+	    return Sketcher::end;
+	}
+    }
+    else if (dir1*dir3 < 0) {
+	// otherPoint on startPoint sided segment
+	return Sketcher::start;
+    }
+    else {
+	return Sketcher::end;
+    }
 }
 
 // Python Sketcher feature ---------------------------------------------------------
