@@ -134,6 +134,216 @@ bool CmdSketcherToggleConstruction::isActive(void)
 }
 
 /* Break line =======================================================*/
+
+/* XPM */
+static const char *cursor_breakline[]={
+"32 32 3 1",
+"+ c white",
+"# c red",
+". c None",
+"......+.........................",
+"......+.........................",
+"......+.........................",
+"......+.........................",
+"......+.........................",
+"................................",
+"+++++...+++++...................",
+"................................",
+"......+...............###.......",
+"......+...............#.#.......",
+"......+...............###.......",
+"......+..............#..........",
+"......+.............#...........",
+"................##..#...........",
+"..................###...........",
+".....................##.........",
+"................................",
+"................................",
+"................................",
+"............##..................",
+"..............###...............",
+"..............#..##.............",
+"..............#.................",
+".............#..................",
+"..........###...................",
+"..........#.#...................",
+"..........###...................",
+"................................",
+"................................",
+"................................",
+"................................",
+"................................"};
+
+class DrawSketchHandlerBreakLine : public DrawSketchHandler
+{
+public:
+    DrawSketchHandlerBreakLine() : Mode(STATUS_START), EditCurve(4), pointOnLine(false) {}
+
+    // mode table
+    enum SelectMode {
+	STATUS_START,
+	STATUS_SEEK_FIRST,
+	STATUS_SEEK_SECOND,
+	STATUS_END
+    };
+    
+    virtual ~DrawSketchHandlerBreakLine() {}
+    
+    virtual void activated(ViewProviderSketch *sketchgui)
+    {
+	setCursor(QPixmap(cursor_breakline), 7, 7);
+	if (!checkSelection()) {
+	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
+	}
+    }
+    
+    virtual void mouseMove(Base::Vector2D onSketchPos)
+    {    
+	// Find the projection of onSketchPoint on the original line
+	Base::Vector3d onSketchPos3(onSketchPos.fX, onSketchPos.fY, 0);
+	Base::Vector3d linePosDelta = onSketchPos3;
+	linePosDelta.ProjToLine(onSketchPos3, origLineDir);
+	Base::Vector3d linePos3 = onSketchPos3 - startPointDist + linePosDelta;
+	    
+	// Check that linePos3 is between the endpoints
+	Base::Vector3d startVec = linePos3 - startPoint;
+	Base::Vector3d endVec = linePos3 - endPoint;
+	    
+	if (startVec * origLineDir <= 0 || endVec * origLineDir >= 0) {
+	    // Point is not on the line
+	    pointOnLine = false;
+	}
+	else {
+	    pointOnLine = true;
+	}
+	
+	if (Mode == STATUS_START) {
+	    Mode = STATUS_SEEK_FIRST;
+	}
+	else if (Mode == STATUS_SEEK_FIRST) {
+	    if (pointOnLine == true) {
+		EditCurve[0] = onSketchPos;
+		EditCurve[3] = EditCurve[2] = EditCurve[1] = Base::Vector2D(linePos3.x, linePos3.y);
+		setPositionText(EditCurve[1]);
+		breakPointStart = linePos3;
+	    }
+	    else {
+		EditCurve[0] = Base::Vector2D(0.f,0.f);
+		EditCurve[3] = EditCurve[2] = EditCurve[1] = EditCurve[0];
+		resetPositionText();
+	    }
+	}
+	else if (Mode == STATUS_SEEK_SECOND) {
+	    if (pointOnLine == true) {
+		EditCurve[2] = Base::Vector2D(linePos3.x, linePos3.y);
+		EditCurve[3] = onSketchPos;
+		setPositionText(EditCurve[3]);
+		breakPointEnd = linePos3;
+	    }
+	    else {
+		EditCurve[3] = EditCurve[2] = EditCurve[1];
+		resetPositionText();
+	    }
+	}
+	sketchgui->drawEdit(EditCurve);
+	applyCursor();
+	
+    }
+    
+    virtual bool pressButton(Base::Vector2D onSketchPos)
+    {
+	if (Mode == STATUS_SEEK_FIRST && pointOnLine == true) {
+	    Mode = STATUS_SEEK_SECOND;
+	}
+	else if (Mode == STATUS_SEEK_SECOND && pointOnLine == true) {
+	    Mode = STATUS_END;
+	}
+	
+    }
+    
+    virtual bool releaseButton(Base::Vector2D onSketchPos) {
+	if (Mode == STATUS_END) {
+	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Not implemented"),
+	    QObject::tr("Command not implemented yet, please try Sketcher_SplitPoint."));
+	    unsetCursor();
+	    resetPositionText();
+	    EditCurve.clear();
+	    sketchgui->drawEdit(EditCurve);
+	    Gui::Selection().clearSelection();
+	    sketchgui->purgeHandler();
+	}
+    }
+
+protected:
+    SelectMode Mode;
+    std::vector<Base::Vector2D> EditCurve;
+    Base::Vector3d startPoint, endPoint, origLineDir, startPointDist, breakPointStart, breakPointEnd;
+    int lineId;
+    bool pointOnLine;
+    
+    bool checkSelection()
+    {
+        // get the selection
+	std::vector<Gui::SelectionObject> selection = Gui::Selection().getSelectionEx();
+    
+	// only one sketch with its subelements are allowed to be selected
+	if (selection.size() != 1) {
+	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+		QObject::tr("Select a line from the sketch."));
+	    return false;
+	}
+    
+	// get the needed lists and objects
+	const std::vector<std::string> &SubNames = selection[0].getSubNames();
+	Sketcher::SketchObject* Obj = dynamic_cast<Sketcher::SketchObject*>(selection[0].getObject());
+    
+	// Check that only one item is selected
+	if (SubNames.size() != 1) {
+	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+		QObject::tr("Select exactly one line from the sketch"));
+	    return false;
+	}
+    
+	int GeoId1;
+	Sketcher::PointPos PosId1;
+	getIdsFromName(SubNames[0], Obj, GeoId1, PosId1);
+    
+	// Check that the line is an edge
+	if (!isEdge(GeoId1, PosId1)) {
+	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+		QObject::tr("Select exactly one line from the sketch"));
+	    return false;
+	}
+    
+	// Check that the line is not external
+	if (GeoId1 < 0) {
+	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("External or reference geometry selected."));
+	    return false;
+	}
+   
+	const Part::Geometry * geom = Obj->getGeometry(GeoId1);
+	if (geom->getTypeId() != Part::GeomLineSegment::getClassTypeId()) {
+	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Wrong selection"),
+            QObject::tr("Selected edge is not a line."));
+	    return false;
+	}
+	
+	const Part::GeomLineSegment *lineSeg;
+	lineSeg = dynamic_cast<const Part::GeomLineSegment*>(geom);
+	startPoint = lineSeg->getStartPoint();
+	endPoint = lineSeg->getEndPoint();
+	
+	origLineDir = endPoint - startPoint;
+	startPointDist = startPoint;
+	startPointDist.ProjToLine(startPoint, origLineDir);
+		
+	lineId = GeoId1;
+	
+	return true;
+    }
+};
+
 DEF_STD_CMD_A(CmdSketcherBreakLine);
 
 CmdSketcherBreakLine::CmdSketcherBreakLine()
@@ -152,14 +362,12 @@ CmdSketcherBreakLine::CmdSketcherBreakLine()
 
 void CmdSketcherBreakLine::activated(int iMsg)
 {
-    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Not implemented"),
-        QObject::tr("Command not implemented yet, please try Sketcher_SplitPoint."));
+    ActivateHandler(getActiveGuiDocument(), new DrawSketchHandlerBreakLine());
 }
 
 bool CmdSketcherBreakLine::isActive(void)
 {
-    //return isAlterGeoActive( getActiveGuiDocument() );
-    return false;
+    return isAlterGeoActive( getActiveGuiDocument() );
 }
 
 /* Split Line =======================================================*/
