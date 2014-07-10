@@ -42,6 +42,8 @@
 #include <QCursor>
 #include <QPixmap>
 
+#include <Inventor/events/SoKeyboardEvent.h>
+
 using namespace std;
 using namespace SketcherGui;
 using namespace Sketcher;
@@ -64,14 +66,6 @@ void getIdsFromName(const std::string &name, const Sketcher::SketchObject* Obj,
 bool isEdge(int GeoId, PointPos PosId);
 
 void ActivateHandler(Gui::Document *doc,DrawSketchHandler *handler);
-/*{
-    if (doc) {
-        if (doc->getInEdit() && doc->getInEdit()->isDerivedFrom
-            (SketcherGui::ViewProviderSketch::getClassTypeId()))
-            dynamic_cast<SketcherGui::ViewProviderSketch*>
-            (doc->getInEdit())->activateHandler(handler);
-    }
-}*/
 
 namespace SketcherGui {
 
@@ -174,10 +168,12 @@ static const char *cursor_breakline[]={
 "................................",
 "................................"};
 
+
+// BreakLine using multipoint splitLine
 class DrawSketchHandlerBreakLine : public DrawSketchHandler
 {
 public:
-    DrawSketchHandlerBreakLine() : Mode(STATUS_START), EditCurve(4), pointOnLine(false) {}
+    DrawSketchHandlerBreakLine() : Mode(STATUS_START), EditCurve(4), pointOnLine(false), lineId(Constraint::GeoUndef) {}
 
     // mode table
     enum SelectMode {
@@ -195,10 +191,12 @@ public:
 	if (!checkSelection()) {
 	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
 	}
+	Mode = STATUS_SEEK_FIRST;
+	// TODO: proper visualisation of selected points
     }
     
     virtual void mouseMove(Base::Vector2D onSketchPos)
-    {    
+    {
 	// Find the projection of onSketchPoint on the original line
 	Base::Vector3d onSketchPos3(onSketchPos.fX, onSketchPos.fY, 0);
 	Base::Vector3d linePosDelta = onSketchPos3;
@@ -258,13 +256,24 @@ public:
 	else if (Mode == STATUS_SEEK_SECOND && pointOnLine == true) {
 	    Mode = STATUS_END;
 	}
-	
     }
     
-    virtual bool releaseButton(Base::Vector2D onSketchPos) {
+    virtual bool releaseButton(Base::Vector2D onSketchPos)
+    {
 	if (Mode == STATUS_END) {
-	    QMessageBox::warning(Gui::getMainWindow(), QObject::tr("Not implemented"),
-	    QObject::tr("Command not implemented yet, please try Sketcher_SplitPoint."));
+
+	    std::vector<Base::Vector3d > breakPoints;
+	    breakPoints.push_back(breakPointStart);
+	    breakPoints.push_back(breakPointEnd);
+	    
+	    // TODO: add a way to prevent constraint addition to the segment being removed
+	    Gui::Command::openCommand("Break line");
+	    sketchgui->getSketchObject()->splitLine(lineId, breakPoints);
+	    // Segment to be removed should be with the second highest index
+	    sketchgui->getSketchObject()->delGeometry(sketchgui->getSketchObject()->getHighestCurveIndex() - 1);
+	    Gui::Command::commitCommand();
+	    Gui::Command::updateActive();
+	    
 	    unsetCursor();
 	    resetPositionText();
 	    EditCurve.clear();
@@ -275,6 +284,8 @@ public:
     }
 
 protected:
+    
+    
     SelectMode Mode;
     std::vector<Base::Vector2D> EditCurve;
     Base::Vector3d startPoint, endPoint, origLineDir, startPointDist, breakPointStart, breakPointEnd;
@@ -411,16 +422,18 @@ static const char *cursor_splitline[]={
 "................................",
 "................................"};
 
+
+// Multipoint splitline
 class DrawSketchHandlerSplitLine: public DrawSketchHandler
 {
+
 public:
-    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(2) {}
-    
+    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(3), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0) {}
+
     // mode table
     enum SelectMode {
 	STATUS_START,
-	STATUS_NOT_ON_LINE,
-	STATUS_POINT_OK,
+	STATUS_SEEK_POINT,
 	STATUS_END
     };
     
@@ -428,77 +441,116 @@ public:
     
     virtual void activated(ViewProviderSketch *sketchgui)
     {
-	setCursor(QPixmap(cursor_splitline), 7, 7);
+	setCursor(QPixmap(cursor_breakline), 7, 7);
 	if (!checkSelection()) {
 	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
 	}
+	Mode = STATUS_SEEK_POINT;
+	// TODO: proper visualisation of selected points
+	EditCurve[0] = Base::Vector2D(startPoint.x, startPoint.y);
     }
     
     virtual void mouseMove(Base::Vector2D onSketchPos)
     {
-	if (Mode != STATUS_END) {
+	// Find the projection of onSketchPoint on the original line
+	Base::Vector3d onSketchPos3(onSketchPos.fX, onSketchPos.fY, 0);
+	Base::Vector3d linePosDelta = onSketchPos3;
+	linePosDelta.ProjToLine(onSketchPos3, origLineDir);
+	Base::Vector3d linePos3 = onSketchPos3 - startPointDist + linePosDelta;
 	    
-	    // Find the projection of onSketchPoint on the original line
-	    Base::Vector3d onSketchPos3(onSketchPos.fX, onSketchPos.fY, 0);
-	    Base::Vector3d linePosDelta = onSketchPos3;
-	    linePosDelta.ProjToLine(onSketchPos3, origLineDir);
-	    Base::Vector3d linePos3 = onSketchPos3 - startPointDist + linePosDelta;
+	// Check that linePos3 is between the endpoints
+	Base::Vector3d startVec = linePos3 - startPoint;
+	Base::Vector3d endVec = linePos3 - endPoint;
 	    
-	    // Check that linePos3 is between the endpoints
-	    Base::Vector3d startVec = linePos3 - startPoint;
-	    Base::Vector3d endVec = linePos3 - endPoint;
-	    
-	    if (startVec * origLineDir <= 0 || endVec * origLineDir >= 0) {
-		// Point is not on the line
-		EditCurve[0] = Base::Vector2D(0.f,0.f);
-		EditCurve[1] = Base::Vector2D(0.f,0.f);
-		resetPositionText();
-		Mode = STATUS_NOT_ON_LINE;
+	if (startVec * origLineDir <= 0 || endVec * origLineDir >= 0) {
+	    // Point is not on the line
+	    pointOnLine = false;
+	}
+	else {
+	    pointOnLine = true;
+	}
+	
+	if (Mode == STATUS_SEEK_POINT) {
+	    if (pointOnLine == true) {
+		EditCurve[EditCurve.size()-2] = Base::Vector2D(linePos3.x, linePos3.y);
+		EditCurve[EditCurve.size()-1] = onSketchPos;
+		setPositionText(EditCurve[EditCurve.size()-1]);
+		currentSplitPoint = linePos3;
 	    }
 	    else {
-		EditCurve[0] = onSketchPos;
-		EditCurve[1] = Base::Vector2D(linePos3.x, linePos3.y);
-		setPositionText(EditCurve[1]);
-		splitPoint = linePos3;
-		Mode = STATUS_POINT_OK;
+		EditCurve[EditCurve.size()-1] = EditCurve[EditCurve.size()-2] = EditCurve[EditCurve.size()-3];
+		resetPositionText();
 	    }
-	    sketchgui->drawEdit(EditCurve);
-	    applyCursor();
 	}
+	
+	sketchgui->drawEdit(EditCurve);
+	applyCursor();	
     }
     
     virtual bool pressButton(Base::Vector2D onSketchPos)
     {
-	if (Mode == STATUS_POINT_OK) {
+	// TODO: button mode setting: select last or add to selection?
+	if (Mode == STATUS_SEEK_POINT && pointOnLine == true) {
 	    Mode = STATUS_END;
-	}
-	
-	return true;
+	    splitPoints.push_back(currentSplitPoint);
+	}	
     }
     
     virtual bool releaseButton(Base::Vector2D onSketchPos)
     {
-
 	if (Mode == STATUS_END) {
 	    Gui::Command::openCommand("Split line");
-	    sketchgui->getSketchObject()->splitLine(lineId, splitPoint);
+	    sketchgui->getSketchObject()->splitLine(lineId, splitPoints);
 	    Gui::Command::commitCommand();
 	    Gui::Command::updateActive();
+	    
 	    unsetCursor();
 	    resetPositionText();
 	    EditCurve.clear();
 	    sketchgui->drawEdit(EditCurve);
 	    Gui::Selection().clearSelection();
-	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
+	    sketchgui->purgeHandler();
 	}
-	return true;
     }
+    
+    void registerPressedKey(bool pressed, int key)
+    {
+	// TODO: remove previous point from selection
+	// FIXME: holding down a key adds multiple points
+	switch (key)
+	{
+	    case SoKeyboardEvent::A:
+		// Add a split point
+		if (!pressed && pointOnLine == true && Mode == STATUS_SEEK_POINT) {
+		    splitPoints.push_back(currentSplitPoint);
+		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+		}
+		break;
+	    case SoKeyboardEvent::F:
+	    case SoKeyboardEvent::ENTER:
+		// Finish point selection
+		Mode = STATUS_END;
+		unsetCursor();
+		resetPositionText();
+		EditCurve.clear();
+		sketchgui->drawEdit(EditCurve);
+		Gui::Selection().clearSelection();
+		sketchgui->purgeHandler(); // No code after this line
+		break;
+	}
+    }    
     
 protected:
     SelectMode Mode;
     std::vector<Base::Vector2D> EditCurve;
-    Base::Vector3d startPoint, endPoint, origLineDir, startPointDist, splitPoint;
+    bool pointOnLine;
     int lineId;
+    Base::Vector3d startPoint, endPoint, origLineDir, startPointDist;
+    std::vector<Base::Vector3d> splitPoints;
+    Base::Vector3d currentSplitPoint;
+    
     
     bool checkSelection()
     {
@@ -561,6 +613,7 @@ protected:
 	
 	return true;
     }
+
 };
 
 DEF_STD_CMD_A(CmdSketcherSplitLine);
@@ -571,7 +624,7 @@ CmdSketcherSplitLine::CmdSketcherSplitLine()
     sAppModule      = "Sketcher";
     sGroup          = QT_TR_NOOP("Sketcher");
     sMenuText       = QT_TR_NOOP("Split line");
-    sToolTipText    = QT_TR_NOOP("Splits the currently selected line into two connected lines");
+    sToolTipText    = QT_TR_NOOP("Splits the currently selected line into several connected lines. 'a' adds a split point, 'f' or Enter finishes selection");
     sWhatsThis      = sToolTipText;
     sStatusTip      = sToolTipText;
     sPixmap         = "Sketcher_SplitLine";

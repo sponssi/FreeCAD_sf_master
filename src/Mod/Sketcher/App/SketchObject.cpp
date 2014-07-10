@@ -61,9 +61,29 @@
 using namespace Sketcher;
 using namespace Base;
 
-//Sketcher::PointPos getClosestEndpoint(const Part::GeomLineSegment * line, Base::Vector3d point);
+// For sorting of split points
+class CompareDistanceFromPoint
+{
+public:
+    CompareDistanceFromPoint() {}
+    CompareDistanceFromPoint(Base::Vector3d & point): comparePoint(point) {}
+    
+    bool operator() (const Base::Vector3d & p1, const Base::Vector3d & p2) {
+	Base::Vector3d dist1 = p1 - comparePoint;
+	Base::Vector3d dist2 = p2 - comparePoint;
+	if (dist1.Length() < dist2.Length()) {
+	    return true;
+	}
+	else {
+	    return false;
+	}
+    }
+    
+    Base::Vector3d comparePoint;
+};
 
 int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point);
+
 Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const Vector3d & endPoint, const Vector3d & splitPoint, const Vector3d & otherPoint);
 
 void printConstraintInfo(const Sketcher::Constraint * c);
@@ -1658,408 +1678,269 @@ int SketchObject::getVertexIndexGeoPos(int GeoId, PointPos PosId) const
 
 int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 {
-    const Part::Geometry * geom = getGeometry(GeoId);
-    if(!geom) {
+    std::vector<Base::Vector3d> vec;
+    vec.push_back(splitPoint);
+    splitLine(GeoId, vec);
+}
+
+int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints)
+{
+    if (splitPoints.size() < 1) {
 	return -1;
     }
-    if(geom->getTypeId() != Part::GeomLineSegment::getClassTypeId()) {
+    const Part::Geometry * geom = getGeometry(geoId);
+    if(!geom) {
 	return -2;
+    }
+    if(geom->getTypeId() != Part::GeomLineSegment::getClassTypeId()) {
+	return -3;
     }
     const Part::GeomLineSegment * lineSeg = dynamic_cast<const Part::GeomLineSegment*>(geom);
     
-    // Check that the point is close ehough to the line
-    double dist = splitPoint.DistanceToLine(lineSeg->getStartPoint(), lineSeg->getEndPoint() - lineSeg->getStartPoint());
-    if (dist > 1e-8) {
-	return -3;
+    // Check that the points are close ehough to the line
+    // TODO: check that the points are between the endpoints of the line
+    // TODO: check for equal points
+    for (int i = 0; i < splitPoints.size()-1; i++) {
+	if (splitPoints[i].DistanceToLine(lineSeg->getStartPoint(), lineSeg->getEndPoint() - lineSeg->getStartPoint()) > 1e-8) {
+	    return -4;
+	}
+    }
+    Base::Vector3d startPoint = getPoint(geoId, Sketcher::start);
+    Base::Vector3d endPoint = getPoint(geoId, Sketcher::end);
+    
+    CompareDistanceFromPoint compLen(startPoint);
+    //CompareDistanceFromPoint compLen;
+    //compLen.comparePoint = startPoint;
+    
+    // Sort the split points from startpoint to endpoint
+    std::sort(splitPoints.begin(), splitPoints.end(), compLen);
+    
+    // debug
+    for (std::vector<Base::Vector3d>::iterator it = splitPoints.begin(); it != splitPoints.end(); ++it)
+    {
+	Base::Console().Message("Distance from startPoint=%f\n", Base::Vector3d((*it) - startPoint).Length());
     }
     
-    // Create the new linesegments
-    Part::GeomLineSegment newSeg1, newSeg2;
+    // Create new segments
+    int numberOfSegments = splitPoints.size() + 1;
+    Part::GeomLineSegment newSeg;
+    std::vector<int> newSegIds;
     
-    newSeg1.setPoints(lineSeg->getStartPoint(), splitPoint);
-    newSeg1.Construction = lineSeg->Construction;
+    newSeg.setPoints(startPoint, splitPoints[0]);
+    newSegIds.push_back(addGeometry(&newSeg));
     
-    newSeg2.setPoints(splitPoint, lineSeg->getEndPoint());
-    newSeg2.Construction = lineSeg->Construction;
+    for (int i = 1; i < splitPoints.size(); i++) {
+	newSeg.setPoints(splitPoints[i-1], splitPoints[i]);
+	newSegIds.push_back(addGeometry(&newSeg));
+    }
     
-    int segId1 = addGeometry(&newSeg1);
-    int segId2 = addGeometry(&newSeg2);
+    newSeg.setPoints(splitPoints.back(), endPoint);
+    newSegIds.push_back(addGeometry(&newSeg));
+
+    // debug
+    Base::Console().Message("newSegIds:\n");
+    for (int i = 0; i < newSegIds.size(); i++) {
+	Base::Console().Message("\t%i\n", newSegIds[i]);
+    }
     
-    // Add coincidence between the new line segments
-    Sketcher::Constraint * newConstP = new Sketcher::Constraint;
-    newConstP->Type = Sketcher::Coincident;
-    newConstP->First = segId1;
-    newConstP->FirstPos = Sketcher::end;
-    newConstP->Second = segId2;
-    newConstP->SecondPos = Sketcher::start;
-    
-    addConstraint(newConstP);
-    delete newConstP;
+    // Move the constraints of the original line to the first and last new segmets
+    transferConstraints(geoId, Sketcher::start, newSegIds.front(), Sketcher::start);
+    transferConstraints(geoId, Sketcher::end, newSegIds.back(), Sketcher::end);
     
     std::vector<Constraint *> newConstVec;
-    int relatedGeoId = 0;
+    Sketcher::Constraint * newConstP;
+    int geoIdInConstraint = 0;
     
     bool HVAdded = false;
     bool addParallel = false;
+    bool addCommonCoincidence = true;
     
-    // Find the constraints of the original line and apply them to the new segments
+    // Find the rest of the constraints of the original line and apply them to the new segments. All constraints of the line end points should be transferred by now.
     const std::vector<Constraint *> &constraints = this->Constraints.getValues();
     
     for(std::vector<Constraint *>::const_iterator it = constraints.begin(); it != constraints.end(); ++it) {
-	if ((*it)->First == GeoId) {
-	    relatedGeoId = 1;
+	if ((*it)->First == geoId) {
+	    geoIdInConstraint = 1;
 	}
-	else if ((*it)->Second == GeoId) {
-	    relatedGeoId = 2;
+	else if ((*it)->Second == geoId) {
+	    geoIdInConstraint = 2;
 	}
-	else if ((*it)->Third == GeoId) {
-	    relatedGeoId = 3;
+	else if ((*it)->Third == geoId) {
+	    geoIdInConstraint = 3;
 	}
 	else {
+	    Base::Console().Message("Constraint skipped:\n");
+	    //printConstraintInfo((*it));
 	    continue;
 	}
 	
-	newConstP = (*it)->clone();
+	Base::Console().Message("Handling constraint:\n");
+	printConstraintInfo((*it));
 	
-	switch (newConstP->Type) {
-	    case Sketcher::Coincident:
-		if (relatedGeoId == 1) {
-		    if (newConstP->FirstPos == Sketcher::start) {
-			newConstP->First = segId1;
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (newConstP->FirstPos == Sketcher::end) {
-			newConstP->First = segId2;
-			newConstVec.push_back(newConstP);
-		    }
-		}
-		else if (relatedGeoId == 2) {
-		    if (newConstP->SecondPos == Sketcher::start) {
-			newConstP->Second = segId1;
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (newConstP->SecondPos == Sketcher::end) {
-			newConstP->Second = segId2;
-			newConstVec.push_back(newConstP);
-		    }
-		}
-		break;
+	switch ((*it)->Type)
+	{
 	    case Sketcher::Horizontal:
 	    case Sketcher::Vertical:
-		newConstP->First = segId1;
-		newConstVec.push_back(newConstP);
-		
-		newConstP = (*it)->clone();
-		newConstP->First = segId2;
-		newConstP->Name = ""; // Prevent double names
-		newConstVec.push_back(newConstP);
-		
+		for (int i = 0; i < numberOfSegments; i++) {
+		    newConstP = (*it)->clone();
+		    newConstP->First = newSegIds[i];
+		    newConstP->Name = ""; // Avoid multiple names with same value
+		    newConstVec.push_back(newConstP);
+		}
 		HVAdded = true;
 		break;
 	    case Sketcher::Parallel:
-		if (relatedGeoId == 1) {
-		    newConstP->First = segId1;
-		    newConstVec.push_back(newConstP);
-		    addParallel = true;
+		// Two lines
+		// TODO: select proper segment
+		newConstP = (*it)->clone();
+		if (geoIdInConstraint == 1) {
+		    newConstP->First = newSegIds.front();    
 		}
-		else if (relatedGeoId == 2) {
-		    newConstP->Second = segId1;
-		    newConstVec.push_back(newConstP);
-		    addParallel = true;
+		else {
+		    newConstP->Second = newSegIds.front();
 		}
+		newConstVec.push_back(newConstP);
+		addParallel = true;
 		break;
 	    case Sketcher::Tangent:
 		// To be implemented
 		break;
-	    case Distance:
-		if (newConstP->First == GeoId && newConstP->Second == GeoId) {
-		    // Endpoints of the original line
-		    if (newConstP->FirstPos == Sketcher::start) {
-			newConstP->First = segId1;
-			newConstP->Second = segId2;
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (newConstP->FirstPos == Sketcher::end) {
-			newConstP->First = segId2;
-			newConstP->Second = segId1;
-			newConstVec.push_back(newConstP);
-		    }
-		}	
-		else if (newConstP->FirstPos == Sketcher::none && newConstP->FirstPos == Sketcher::none) {
+	    case Sketcher::Distance:
+		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    // Length of the original line
-		    newConstP->First = segId1;
+		    newConstP = (*it)->clone();
+		    // TODO: negative Value, is it even possible here?
+		    newConstP->First = newSegIds.front();
 		    newConstP->FirstPos = Sketcher::start;
-		    newConstP->Second = segId2;
+		    newConstP->Second = newSegIds.back();
 		    newConstP->SecondPos = Sketcher::end;
 		    newConstVec.push_back(newConstP);
 		}
-		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos == Sketcher::none) {
-		    // Distance of a point from a line
-		    if (relatedGeoId == 1) {
-			// Point of the origina line from some other line
-			if (newConstP->FirstPos == Sketcher::start) {
-			    newConstP->First = segId1;
-			}
-			else if (newConstP->FirstPos == Sketcher::end) {
-			    newConstP->First = segId2;
-			}
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (relatedGeoId == 2) {
-			// Distance of some point from the origina line
-			
-			// Find the correct segment to add the constraint to
-			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
-			    newConstP->Second = segId1;
-			}
-			else {
-			    newConstP->Second = segId2;
-			}
-			
-			newConstVec.push_back(newConstP);
-		    }
-		}
-		else {
-		    // Distance of two points
-		    if (relatedGeoId == 1) {
-			if (newConstP->FirstPos == Sketcher::start) {
-			    newConstP->First = segId1;
-			    newConstVec.push_back(newConstP);
-			}
-			else if (newConstP->FirstPos == Sketcher::end) {
-			    newConstP->First = segId2;
-			    newConstVec.push_back(newConstP);
-			}
-		    }
-		    else if (relatedGeoId == 2) {
-			if (newConstP->SecondPos == Sketcher::start) {
-			    newConstP->Second = segId1;
-			    newConstVec.push_back(newConstP);
-			}
-			else if (newConstP->SecondPos == Sketcher::end) {
-			    newConstP->Second = segId2;
-			    newConstVec.push_back(newConstP);
-			}
-		    }
-		}
-		break;
-	    case DistanceX:
-	    case DistanceY:
-		if (newConstP->First == GeoId && newConstP->Second == GeoId) {
-		    // Distance of the endpoints of the original line
-		    if (newConstP->FirstPos == Sketcher::start) {
-			newConstP->First = segId1;
-			newConstP->Second = segId2;
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (newConstP->FirstPos == Sketcher::end) {
-			newConstP->First = segId2;
-			newConstP->Second = segId1;
-			newConstVec.push_back(newConstP);
-		    }
-		}
-		else if (newConstP->FirstPos == Sketcher::none && newConstP->SecondPos == Sketcher::none) {
-		    // Distance of the original line
-		    newConstP->First = segId1;
-		    newConstP->FirstPos = Sketcher::start;
-		    newConstP->Second = segId2;
-		    newConstP->SecondPos = Sketcher::end;
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none) {
+		    // Distance of some point from the original line
+		    newConstP = (*it)->clone();
+		    // TODO: select the appropriate segment
+		    
+		    // The projection of the other point on the line
+		    
+		    
+		    newConstP->Second = newSegIds.front();
 		    newConstVec.push_back(newConstP);
 		}
-		else if (newConstP->First != Constraint::GeoUndef && newConstP->Second == Constraint::GeoUndef) {
-		    // Distance of a point from an axis
-		    if (newConstP->FirstPos == Sketcher::start) {
-			newConstP->First = segId1;
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (newConstP->FirstPos == Sketcher::end) {
-			newConstP->First = segId2;
-			newConstVec.push_back(newConstP);
-		    }
-		}
-		else {
-		    // Distance of two points
-		    if (relatedGeoId == 1) {
-			if (newConstP->FirstPos == Sketcher::start) {
-			    newConstP->First = segId1;
-			    newConstVec.push_back(newConstP);
-			}
-			else if (newConstP->FirstPos == Sketcher::end) {
-			    newConstP->First = segId2;
-			    newConstVec.push_back(newConstP);
-			}
-		    }
-		    else if (relatedGeoId == 2) {
-			if (newConstP->SecondPos == Sketcher::start) {
-			    newConstP->Second = segId1;
-			    newConstVec.push_back(newConstP);
-			}
-			else if (newConstP->SecondPos == Sketcher::end) {
-			    newConstP->Second = segId2;
-			    newConstVec.push_back(newConstP);
-			}
-		    }
+		break;
+	    case Sketcher::DistanceX:
+	    case Sketcher::DistanceY:
+		if ((*it)->Second == Constraint::GeoUndef) {
+		    // Hor/vert length of the original line
+		    newConstP = (*it)->clone();
+		    newConstP->First = newSegIds.front();
+		    newConstP->FirstPos = Sketcher::start;
+		    newConstP->Second = newSegIds.back();
+		    newConstP->SecondPos = Sketcher::end;
+		    
+		    
+
+		    newConstVec.push_back(newConstP);
 		}
 		break;
-	    case Angle:
-		// TODO: Smarter selelction of the segment
-		if (relatedGeoId == 1) {
-		    if (newConstP->Second == Constraint::GeoUndef) {
+	    case Sketcher::Angle:
+		// TODO: smarter selection of the proper segment
+		if (geoIdInConstraint == 1) {
+		    if ((*it)->Second == Constraint::GeoUndef) {
 			// Angle to the horizontal axis
-			newConstP->First = segId1;
+			newConstP = (*it)->clone();
+			newConstP->First = newSegIds.front();
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
 		    else {
 			// Angle between two lines
-			newConstP->First = segId1;
+			newConstP = (*it)->clone();
+			newConstP->First = newSegIds.front();
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
 		}
-		else if (relatedGeoId == 2) {
+		else if (geoIdInConstraint == 2) {
 		    // Angle between two lines
-		    newConstP->Second = segId1;
+		    newConstP = (*it)->clone();
+		    newConstP->Second = newSegIds.front();
 		    newConstVec.push_back(newConstP);
 		    addParallel = true;
 		}
 		break;
-	    case Perpendicular:
-		if (newConstP->FirstPos == Sketcher::none && newConstP->SecondPos == Sketcher::none) {
-		    // Two perpedicular lines, no endpoint constraint
-		    if (relatedGeoId == 1) {
-			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->Second, Sketcher::start)) == Sketcher::start) {
-			    newConstP->First = segId1;
-			}
-			else {
-			    newConstP->First = segId2;
-			}
+	    case Sketcher::Perpendicular:
+		// TODO: find proper segment
+		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
+		    // No endpoint constraint
+		    if (geoIdInConstraint == 1) {
+			newConstP = (*it)->clone();
+			newConstP->First = newSegIds.front();
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
-		    else if (relatedGeoId == 2) {
-			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
-			    newConstP->Second = segId1;
-			}
-			else {
-			    newConstP->Second = segId2;
-			}
+		    else if (geoIdInConstraint == 2) {
+			newConstP = (*it)->clone();
+			newConstP->Second = newSegIds.front();
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
 		}
-		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos == Sketcher::none) {
-		    if (relatedGeoId == 1) {
-			// Endpoint on some other line
-			if (newConstP->FirstPos == Sketcher::start) {
-			    newConstP->First = segId1;
-			    newConstVec.push_back(newConstP);
-			    addParallel = true;
-			}
-			else if (newConstP->FirstPos == Sketcher::end) {
-			    newConstP->First = segId2;
-			    newConstVec.push_back(newConstP);
-			    addParallel = true;
-			}
-		    }
-		    else if (relatedGeoId == 2) {
-			// Some other point on line
-			
-			// Find the correct segment to add the constraint to
-			if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
-			    newConstP->Second = segId1;
-			}
-			else {
-			    newConstP->Second = segId2;
-			}
-			
-			newConstVec.push_back(newConstP);
-			addParallel = true;
-		    }
-		}
-		else if (newConstP->FirstPos != Sketcher::none && newConstP->SecondPos != Sketcher::none) {
-		    // Point on point
-		    if (relatedGeoId == 1) {
-			if (newConstP->FirstPos == Sketcher::start) {
-			    newConstP->First = segId1;
-			    newConstVec.push_back(newConstP);
-			    addParallel = true;
-			}
-			else if (newConstP->FirstPos == Sketcher::end) {
-			    newConstP->First = segId2;
-			    newConstVec.push_back(newConstP);
-			    addParallel = true;
-			}
-		    }
-		    else if (relatedGeoId == 2) {
-			if (newConstP->SecondPos == Sketcher::start) {
-			    newConstP->Second = segId1;
-			    newConstVec.push_back(newConstP);
-			    addParallel = true;
-			}
-			else if (newConstP->SecondPos == Sketcher::end) {
-			    newConstP->Second = segId2;
-			    newConstVec.push_back(newConstP);
-			    addParallel = true;
-			}
-		    }
-		}
-		break;
-	    case Equal:
-		// To be implemented
-		// Remove completely?
-		// Add a distance constraint to the other line if it already doesn't have one?
-		break;
-	    case PointOnObject:
-		if (relatedGeoId == 1) {
-		    // Endpoint on some other line
-		    if (newConstP->FirstPos == Sketcher::start) {
-			newConstP->First = segId1;
-			newConstVec.push_back(newConstP);
-		    }
-		    else if (newConstP->FirstPos == Sketcher::end) {
-			newConstP->First = segId2;
-			newConstVec.push_back(newConstP);
-		    }
-		}
-		else if (relatedGeoId == 2) {
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none && geoIdInConstraint == 2) {
 		    // Some other point on line
-		    // Find the correct segment to add the constraint to
-		    if (getSplittedSegmentOfPoint(getPoint(GeoId, Sketcher::start), getPoint(GeoId, Sketcher::end), splitPoint, getPoint(newConstP->First, Sketcher::start)) == Sketcher::start) {
-			newConstP->Second = segId1;
-			}
-		    else {
-			newConstP->Second = segId2;
-		    }
-			
+		    newConstP = (*it)->clone();
+		    newConstP->Second = newSegIds.front();
+		    newConstVec.push_back(newConstP);
+		    addParallel = true;
+		}
+		break;
+	    case Sketcher::Equal:
+		// To be implemented
+		break;
+	    case Sketcher::PointOnObject:
+		if (geoIdInConstraint == 2) {
+		    // Some other point on line
+		    newConstP = (*it)->clone();
+		    newConstP->Second = newSegIds.front();
 		    newConstVec.push_back(newConstP);
 		}
 		break;
-	    case Symmetric:
+	    case Sketcher::Symmetric:
 		// To be implemented
 		break;
 	}
-	
-	newConstP = 0;
     }
     
     if (addParallel && !HVAdded) {
-	newConstP = new Sketcher::Constraint;
-	newConstP->Type = Parallel;
-	newConstP->First = segId1;
-	newConstP->Second = segId2;
-	newConstVec.push_back(newConstP);
+	
     }
     
+    if (addCommonCoincidence) {
+	for (int i = 0; i < numberOfSegments - 1; i++) {
+	    newConstP = new Sketcher::Constraint;
+	    newConstP->Type = Sketcher::Coincident;
+	    newConstP->First = newSegIds[i];
+	    newConstP->FirstPos = Sketcher::end;
+	    newConstP->Second = newSegIds[i+1];
+	    newConstP->SecondPos = Sketcher::start;
+	    newConstVec.push_back(newConstP);
+	}
+    }
+    
+   
     addConstraints(newConstVec);
     
-    delGeometry(GeoId);
-
+    delGeometry(geoId);
+    
+    // debug
+    Base::Console().Message("newConstVec.size()=%i\n", newConstVec.size());
+    
     for(std::vector<Constraint *>::iterator it = newConstVec.begin(); it != newConstVec.end(); ++it) {
 	if (*it) delete (*it);
     }
 
     Constraints.acceptGeometry(getCompleteGeometry());
+    
     rebuildVertexIndex();
 }
 
@@ -2069,6 +1950,7 @@ void printConstraintInfo(const Sketcher::Constraint * c)
     Base::Console().Message("Constraint info:\n");
     Base::Console().Message("\tType=%i\n", c->Type);
     Base::Console().Message("\tName=%s\n", c->Name.c_str());
+    Base::Console().Message("\tValue=%f\n", c->Value);
     Base::Console().Message("\tFirst=%i\n", c->First);
     Base::Console().Message("\tFirstPos=%i\n", c->FirstPos);
     Base::Console().Message("\tSecond=%i\n", c->Second);
