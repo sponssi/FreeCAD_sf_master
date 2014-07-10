@@ -88,6 +88,8 @@ Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const 
 
 void printConstraintInfo(const Sketcher::Constraint * c);
 
+int getSegmentIdByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances);
+
 PROPERTY_SOURCE(Sketcher::SketchObject, Part::Part2DObject)
 
 
@@ -1725,17 +1727,25 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     int numberOfSegments = splitPoints.size() + 1;
     Part::GeomLineSegment newSeg;
     std::vector<int> newSegIds;
+    std::vector<double> segEndDistances; // from startPoint
+    Base::Vector3d tmpDist;
     
     newSeg.setPoints(startPoint, splitPoints[0]);
     newSegIds.push_back(addGeometry(&newSeg));
+    tmpDist = splitPoints[0] - startPoint;
+    segEndDistances.push_back(tmpDist.Length());
     
     for (int i = 1; i < splitPoints.size(); i++) {
 	newSeg.setPoints(splitPoints[i-1], splitPoints[i]);
 	newSegIds.push_back(addGeometry(&newSeg));
+	tmpDist = splitPoints[i] - startPoint;
+	segEndDistances.push_back(tmpDist.Length());
     }
     
     newSeg.setPoints(splitPoints.back(), endPoint);
     newSegIds.push_back(addGeometry(&newSeg));
+    tmpDist = endPoint - startPoint;
+    segEndDistances.push_back(tmpDist.Length());
 
     // debug
     Base::Console().Message("newSegIds:\n");
@@ -1809,7 +1819,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    // Length of the original line
 		    newConstP = (*it)->clone();
-		    // TODO: negative Value, is it even possible here?
 		    newConstP->First = newSegIds.front();
 		    newConstP->FirstPos = Sketcher::start;
 		    newConstP->Second = newSegIds.back();
@@ -1819,12 +1828,23 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    // Distance of some point from the original line
 		    newConstP = (*it)->clone();
-		    // TODO: select the appropriate segment
 		    
 		    // The projection of the other point on the line
+		    Base::Vector3d otherPoint = getPoint(newConstP->First, newConstP->FirstPos);
+		    Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
 		    
-		    
-		    newConstP->Second = newSegIds.front();
+		    Base::Vector3d startDist = otherProj-startPoint;
+		    Base::Vector3d endDist = otherProj-endPoint;
+		    if( startDist.Length() < 1e-8) {
+			// projection not on line, startPoint closer
+			newConstP->Second = newSegIds.front();
+		    }
+		    else if (endDist.Length() < 1e-8) {
+			newConstP->Second = newSegIds.back();
+		    }
+		    else {
+			newConstP->Second = newSegIds[getSegmentIdByDistance(otherProj, startPoint, segEndDistances)];
+		    }
 		    newConstVec.push_back(newConstP);
 		}
 		break;
@@ -1837,9 +1857,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    newConstP->FirstPos = Sketcher::start;
 		    newConstP->Second = newSegIds.back();
 		    newConstP->SecondPos = Sketcher::end;
-		    
-		    
-
 		    newConstVec.push_back(newConstP);
 		}
 		break;
@@ -2010,6 +2027,12 @@ Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const 
     }
 }
 
+int getSegmentIdByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances)
+{
+    Base::Vector3d dist = point - startPoint;
+    std::vector<double>::const_iterator it = std::upper_bound(distances.begin(), distances.end(), dist.Length());
+    return it - distances.begin();
+}
 // Python Sketcher feature ---------------------------------------------------------
 
 namespace App {
