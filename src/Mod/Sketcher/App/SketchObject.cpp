@@ -1691,7 +1691,6 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 
 int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints)
 {
-    // FIXME: z!=0, z==~0.0005
     if (splitPoints.size() < 1) {
 	return -1;
     }
@@ -1704,16 +1703,19 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     }
     const Part::GeomLineSegment * lineSeg = dynamic_cast<const Part::GeomLineSegment*>(geom);
     
+    Base::Vector3d startPoint = getPoint(geoId, Sketcher::start);
+    Base::Vector3d endPoint = getPoint(geoId, Sketcher::end);
+    
     // Check that the points are close ehough to the line
     // TODO: check that the points are between the endpoints of the line
-    // TODO: check for equal points
     for (int i = 0; i < splitPoints.size()-1; i++) {
 	if (splitPoints[i].DistanceToLine(lineSeg->getStartPoint(), lineSeg->getEndPoint() - lineSeg->getStartPoint()) > 1e-8) {
 	    return -4;
 	}
+	if ((startPoint - splitPoints[i]) * (endPoint - splitPoints[i]) > 0) {
+	    return -5; // not between endpoints
+	}
     }
-    Base::Vector3d startPoint = getPoint(geoId, Sketcher::start);
-    Base::Vector3d endPoint = getPoint(geoId, Sketcher::end);
     
     CompareDistanceFromPoint compLen(startPoint);
     //CompareDistanceFromPoint compLen;
@@ -1735,22 +1737,35 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     std::vector<double> segEndDistances; // from startPoint
     Base::Vector3d tmpDist;
     
+    tmpDist = splitPoints[0] - startPoint;
+    if (tmpDist.Length() < 1e-8) return -6; // too close to startPoint
+    segEndDistances.push_back(tmpDist.Length());
     newSeg.setPoints(startPoint, splitPoints[0]);
     newSegIds.push_back(addGeometry(&newSeg));
-    tmpDist = splitPoints[0] - startPoint;
-    segEndDistances.push_back(tmpDist.Length());
+    
     
     for (int i = 1; i < splitPoints.size(); i++) {
+	tmpDist = splitPoints[i] - startPoint;
+	if (tmpDist.Length() - segEndDistances.back() < 1e-8) {
+	    // too close to previous point
+	    for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end(); ++it) delGeometry(*it);
+	    return -7;
+	}
+	segEndDistances.push_back(tmpDist.Length());
 	newSeg.setPoints(splitPoints[i-1], splitPoints[i]);
 	newSegIds.push_back(addGeometry(&newSeg));
-	tmpDist = splitPoints[i] - startPoint;
-	segEndDistances.push_back(tmpDist.Length());
     }
     
+    tmpDist = endPoint - startPoint;
+    if (tmpDist.Length() - segEndDistances.back() < 1e-8) {
+	// too close to previous point
+	for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end();++it) delGeometry(*it);
+	return -8;
+    }
+    segEndDistances.push_back(tmpDist.Length());
     newSeg.setPoints(splitPoints.back(), endPoint);
     newSegIds.push_back(addGeometry(&newSeg));
-    tmpDist = endPoint - startPoint;
-    segEndDistances.push_back(tmpDist.Length());
+    
 
     // debug
     Base::Console().Message("newSegIds:\n");
@@ -2337,8 +2352,11 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     }
 
     Constraints.acceptGeometry(getCompleteGeometry());
-    
+
     rebuildVertexIndex();
+    
+    return 0;
+
 }
 
 // debug info
