@@ -88,7 +88,9 @@ Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const 
 
 void printConstraintInfo(const Sketcher::Constraint * c);
 
-int getSegmentIdByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances);
+int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances);
+
+void printVector3d(const Base::Vector3d & vec);
 
 PROPERTY_SOURCE(Sketcher::SketchObject, Part::Part2DObject)
 
@@ -1835,15 +1837,15 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    
 		    Base::Vector3d startDist = otherProj-startPoint;
 		    Base::Vector3d endDist = otherProj-endPoint;
-		    if( startDist.Length() < 1e-8) {
+		    if( startDist.Length() < 1e-3) { //FIXME: problem with DistanceToLineSegment
 			// projection not on line, startPoint closer
 			newConstP->Second = newSegIds.front();
 		    }
-		    else if (endDist.Length() < 1e-8) {
+		    else if (endDist.Length() < 1e-3) {
 			newConstP->Second = newSegIds.back();
 		    }
 		    else {
-			newConstP->Second = newSegIds[getSegmentIdByDistance(otherProj, startPoint, segEndDistances)];
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
 		    }
 		    newConstVec.push_back(newConstP);
 		}
@@ -1887,18 +1889,54 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		}
 		break;
 	    case Sketcher::Perpendicular:
-		// TODO: find proper segment
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    // No endpoint constraint
 		    if (geoIdInConstraint == 1) {
 			newConstP = (*it)->clone();
+			
+			// The projection of the other point on the line
+			Base::Vector3d otherPoint = getPoint(newConstP->Second, Sketcher::start);
+			Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+			
+			printVector3d(otherPoint);
+			printVector3d(otherProj);
+		    
+			Base::Vector3d startDist = otherProj-startPoint;
+			Base::Vector3d endDist = otherProj-endPoint;
+			if( startDist.Length() < 1e-3) { //FIXME
+			// projection not on line, startPoint closer
 			newConstP->First = newSegIds.front();
+			}
+			else if (endDist.Length() < 1e-3) {
+			    newConstP->First = newSegIds.back();
+			}
+			else {
+			    newConstP->First = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			}
+			
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
 		    else if (geoIdInConstraint == 2) {
 			newConstP = (*it)->clone();
+			
+			// The projection of the other point on the line
+			Base::Vector3d otherPoint = getPoint(newConstP->First, Sketcher::start);
+			Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+		    
+			Base::Vector3d startDist = otherProj-startPoint;
+			Base::Vector3d endDist = otherProj-endPoint;
+			if( startDist.Length() < 1e-8) {
+			// projection not on line, startPoint closer
 			newConstP->Second = newSegIds.front();
+			}
+			else if (endDist.Length() < 1e-8) {
+			    newConstP->Second = newSegIds.back();
+			}
+			else {
+			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			}
+			
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
@@ -1906,7 +1944,24 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none && geoIdInConstraint == 2) {
 		    // Some other point on line
 		    newConstP = (*it)->clone();
-		    newConstP->Second = newSegIds.front();
+		    
+		    // The projection of the other point on the line
+		    Base::Vector3d otherPoint = getPoint(newConstP->First, newConstP->FirstPos);
+		    Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+		    
+		    Base::Vector3d startDist = otherProj-startPoint;
+		    Base::Vector3d endDist = otherProj-endPoint;
+		    if( startDist.Length() < 1e-8) { // FIXME
+			// projection not on line, startPoint closer
+			newConstP->Second = newSegIds.front();
+		    }
+		    else if (endDist.Length() < 1e-8) {
+			newConstP->Second = newSegIds.back();
+		    }
+		    else {
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+		    }
+		    
 		    newConstVec.push_back(newConstP);
 		    addParallel = true;
 		}
@@ -1918,7 +1973,23 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		if (geoIdInConstraint == 2) {
 		    // Some other point on line
 		    newConstP = (*it)->clone();
-		    newConstP->Second = newSegIds.front();
+		    
+		    // The projection of the other point on the line
+		    Base::Vector3d otherPoint = getPoint(newConstP->First, newConstP->FirstPos);
+		    Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+		    
+		    Base::Vector3d startDist = otherProj-startPoint;
+		    Base::Vector3d endDist = otherProj-endPoint;
+		    if( startDist.Length() < 1e-8) { //FIXME
+			// projection not on line, startPoint closer
+			newConstP->Second = newSegIds.front();
+		    }
+		    else if (endDist.Length() < 1e-8) {
+			newConstP->Second = newSegIds.back();
+		    }
+		    else {
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+		    }
 		    newConstVec.push_back(newConstP);
 		}
 		break;
@@ -1929,7 +2000,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     }
     
     if (addParallel && !HVAdded) {
-	
+	// TODO: add common parallel constraints
     }
     
     if (addCommonCoincidence) {
@@ -2027,11 +2098,23 @@ Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const 
     }
 }
 
-int getSegmentIdByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances)
+int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances)
 {
+    if (distances.size() < 1) return -1; // Dangerous
     Base::Vector3d dist = point - startPoint;
     std::vector<double>::const_iterator it = std::upper_bound(distances.begin(), distances.end(), dist.Length());
+    if (!(*it)) {
+	// beyond the endpoint
+	it = distances.end();
+    }
+    
+    Base::Console().Message("getSegmentNumByDistance: dist.Length()=%f, retval=%i\n", dist.Length(), it-distances.begin());
     return it - distances.begin();
+}
+
+void printVector3d(const Base::Vector3d & vec)
+{
+    Base::Console().Message("vec: x=%f, y=%f, z=%f\n", vec.x, vec.y, vec.z);
 }
 // Python Sketcher feature ---------------------------------------------------------
 
