@@ -1806,13 +1806,53 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		break;
 	    case Sketcher::Parallel:
 		// Two lines
-		// TODO: select proper segment
 		newConstP = (*it)->clone();
+		
 		if (geoIdInConstraint == 1) {
-		    newConstP->First = newSegIds.front();    
+		    Base::Vector3d otherMidPoint = (getPoint(newConstP->Second, Sketcher::end) - getPoint(newConstP->Second, Sketcher::start)) / 2 + getPoint(newConstP->Second, Sketcher::start);
+		    Base::Vector3d midPointProj;
+		    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->First = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
+			newConstP->First = newSegIds.front();
+		    }
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
+			newConstP->First = newSegIds.back();
+		    }
+		    else {
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
+		    }
 		}
 		else {
-		    newConstP->Second = newSegIds.front();
+		    Base::Vector3d otherMidPoint = (getPoint(newConstP->First, Sketcher::end) - getPoint(newConstP->First, Sketcher::start)) / 2 + getPoint(newConstP->First, Sketcher::start);
+		    Base::Vector3d midPointProj;
+		    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->Second = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
+			newConstP->Second = newSegIds.front();
+		    }
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
+			newConstP->Second = newSegIds.back();
+		    }
+		    else {
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
+		    }
 		}
 		newConstVec.push_back(newConstP);
 		addParallel = true;
