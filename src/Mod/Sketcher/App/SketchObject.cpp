@@ -1888,6 +1888,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 				continue;
 			    }
 			    newConstVec.push_back(newConstP);
+			    addParallel = true;
 			}
 			else if (otherGeo->getTypeId() == Part::GeomCircle::getClassTypeId()) {
 			    const Part::GeomCircle * otherGeoCircle;
@@ -1914,6 +1915,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 				continue;
 			    }
 			    newConstVec.push_back(newConstP);
+			    addParallel = true;
 			}
 			else if (otherGeo->getTypeId() == Part::GeomArcOfCircle::getClassTypeId()) {
 			    const Part::GeomArcOfCircle * otherGeoArc;
@@ -1940,6 +1942,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 				continue;
 			    }
 			    newConstVec.push_back(newConstP);
+			    addParallel = true;
 			}
 			else {
 			    Base::Console().Message("Unknown geometry for tangent constraint\n");
@@ -1972,6 +1975,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 				continue;
 			    }
 			    newConstVec.push_back(newConstP);
+			    addParallel = true;
 			}
 			else if (otherGeo->getTypeId() == Part::GeomCircle::getClassTypeId()) {
 			    const Part::GeomCircle * otherGeoCircle;
@@ -1998,6 +2002,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 				continue;
 			    }
 			    newConstVec.push_back(newConstP);
+			    addParallel = true;
 			}
 			else if (otherGeo->getTypeId() == Part::GeomArcOfCircle::getClassTypeId()) {
 			    const Part::GeomArcOfCircle * otherGeoArc;
@@ -2024,6 +2029,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 				continue;
 			    }
 			    newConstVec.push_back(newConstP);
+			    addParallel = true;
 			}
 			else {
 			    Base::Console().Message("Unknown geometry for tangent constraint\n");
@@ -2059,6 +2065,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 
 		    newConstVec.push_back(newConstP);
+		    addParallel = true;
 		}
 		break;
 	    case Sketcher::Distance:
@@ -2070,6 +2077,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    newConstP->Second = newSegIds.back();
 		    newConstP->SecondPos = Sketcher::end;
 		    newConstVec.push_back(newConstP);
+		    addParallel = true;
 		}
 		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    // Distance of some point from the original line
@@ -2123,7 +2131,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		}
 		// Line to line constraints seem to be handled by transferConstraints
-		// TODO: common parallel with line to line
 		break;
 	    case Sketcher::Perpendicular:
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
@@ -2296,7 +2303,13 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     }
     
     if (addParallel && !HVAdded) {
-	// TODO: add common parallel constraints
+	for (int i = 0; i < splitPoints.size(); i++) {
+	    newConstP = new Sketcher::Constraint;
+	    newConstP->Type = Sketcher::Parallel;
+	    newConstP->First = newSegIds[i];
+	    newConstP->Second = newSegIds[i+1];
+	    newConstVec.push_back(newConstP);
+	}
     }
     
     if (addCommonCoincidence) {
