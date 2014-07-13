@@ -92,6 +92,8 @@ int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, con
 
 void printVector3d(const Base::Vector3d & vec);
 
+int getProjectionOnLineSegment(Base::Vector3d projPoint, const Base::Vector3d & point, const Base::Vector3d & segStart, const Base::Vector3d & segEnd);
+
 PROPERTY_SOURCE(Sketcher::SketchObject, Part::Part2DObject)
 
 
@@ -1689,6 +1691,7 @@ int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 
 int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints)
 {
+    // FIXME: z!=0, z==~0.0005
     if (splitPoints.size() < 1) {
 	return -1;
     }
@@ -1831,22 +1834,28 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    // Distance of some point from the original line
 		    newConstP = (*it)->clone();
 		    
-		    // The projection of the other point on the line
-		    Base::Vector3d otherPoint = getPoint(newConstP->First, newConstP->FirstPos);
-		    Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+		    Base::Vector3d otherProj;
+		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
 		    
-		    Base::Vector3d startDist = otherProj-startPoint;
-		    Base::Vector3d endDist = otherProj-endPoint;
-		    if( startDist.Length() < 1e-3) { //FIXME: problem with DistanceToLineSegment
-			// projection not on line, startPoint closer
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
 			newConstP->Second = newSegIds.front();
 		    }
-		    else if (endDist.Length() < 1e-3) {
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
 			newConstP->Second = newSegIds.back();
 		    }
 		    else {
-			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
 		    }
+
 		    newConstVec.push_back(newConstP);
 		}
 		break;
@@ -1894,24 +1903,26 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    if (geoIdInConstraint == 1) {
 			newConstP = (*it)->clone();
 			
-			// The projection of the other point on the line
-			Base::Vector3d otherPoint = getPoint(newConstP->Second, Sketcher::start);
-			Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
-			
-			printVector3d(otherPoint);
-			printVector3d(otherProj);
+			Base::Vector3d otherProj;
+			int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->Second, Sketcher::start), startPoint, endPoint);
 		    
-			Base::Vector3d startDist = otherProj-startPoint;
-			Base::Vector3d endDist = otherProj-endPoint;
-			if( startDist.Length() < 1e-3) { //FIXME
-			// projection not on line, startPoint closer
-			newConstP->First = newSegIds.front();
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->First = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
 			}
-			else if (endDist.Length() < 1e-3) {
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->First = newSegIds.front();
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
 			    newConstP->First = newSegIds.back();
 			}
 			else {
-			    newConstP->First = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			    // Some problem with the segment
+			    Base::Console().Message("Some problem with original line.\n");
+			    delete newConstP;
+			    continue;
 			}
 			
 			newConstVec.push_back(newConstP);
@@ -1920,21 +1931,26 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    else if (geoIdInConstraint == 2) {
 			newConstP = (*it)->clone();
 			
-			// The projection of the other point on the line
-			Base::Vector3d otherPoint = getPoint(newConstP->First, Sketcher::start);
-			Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+			Base::Vector3d otherProj;
+			int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, Sketcher::start), startPoint, endPoint);
 		    
-			Base::Vector3d startDist = otherProj-startPoint;
-			Base::Vector3d endDist = otherProj-endPoint;
-			if( startDist.Length() < 1e-8) {
-			// projection not on line, startPoint closer
-			newConstP->Second = newSegIds.front();
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
 			}
-			else if (endDist.Length() < 1e-8) {
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->Second = newSegIds.front();
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
 			    newConstP->Second = newSegIds.back();
 			}
 			else {
-			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			    // Some problem with the segment
+			    Base::Console().Message("Some problem with original line.\n");
+			    delete newConstP;
+			    continue;
 			}
 			
 			newConstVec.push_back(newConstP);
@@ -1945,21 +1961,26 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    // Some other point on line
 		    newConstP = (*it)->clone();
 		    
-		    // The projection of the other point on the line
-		    Base::Vector3d otherPoint = getPoint(newConstP->First, newConstP->FirstPos);
-		    Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+		    Base::Vector3d otherProj;
+		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
 		    
-		    Base::Vector3d startDist = otherProj-startPoint;
-		    Base::Vector3d endDist = otherProj-endPoint;
-		    if( startDist.Length() < 1e-8) { // FIXME
-			// projection not on line, startPoint closer
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
 			newConstP->Second = newSegIds.front();
 		    }
-		    else if (endDist.Length() < 1e-8) {
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
 			newConstP->Second = newSegIds.back();
 		    }
 		    else {
-			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
 		    }
 		    
 		    newConstVec.push_back(newConstP);
@@ -1974,22 +1995,28 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    // Some other point on line
 		    newConstP = (*it)->clone();
 		    
-		    // The projection of the other point on the line
-		    Base::Vector3d otherPoint = getPoint(newConstP->First, newConstP->FirstPos);
-		    Base::Vector3d otherProj = otherPoint + otherPoint.DistanceToLineSegment(startPoint, endPoint);
+		    Base::Vector3d otherProj;
+		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
 		    
-		    Base::Vector3d startDist = otherProj-startPoint;
-		    Base::Vector3d endDist = otherProj-endPoint;
-		    if( startDist.Length() < 1e-8) { //FIXME
-			// projection not on line, startPoint closer
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
 			newConstP->Second = newSegIds.front();
 		    }
-		    else if (endDist.Length() < 1e-8) {
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
 			newConstP->Second = newSegIds.back();
 		    }
 		    else {
-			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
 		    }
+		    
 		    newConstVec.push_back(newConstP);
 		}
 		break;
@@ -2115,6 +2142,62 @@ int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, con
 void printVector3d(const Base::Vector3d & vec)
 {
     Base::Console().Message("vec: x=%f, y=%f, z=%f\n", vec.x, vec.y, vec.z);
+}
+
+int getProjectionOnLineSegment(Base::Vector3d projPoint, const Base::Vector3d & point, const Base::Vector3d & segStart, const Base::Vector3d & segEnd)
+{
+    Base::Vector3d dir = segEnd - segStart;
+    Base::Vector3d proj, startDelta;
+    proj.ProjToLine(point, dir);
+    startDelta.ProjToLine(segStart, dir);
+    projPoint = point - startDelta + proj;
+    
+    Base::Vector3d startVec = projPoint - segStart;
+    Base::Vector3d endVec = projPoint - segEnd;
+    
+    Base::Console().Message("point: ");
+    printVector3d(point);
+    Base::Console().Message("segStart: ");
+    printVector3d(segStart);
+    Base::Console().Message("segEnd: ");
+    printVector3d(segEnd);
+    Base::Console().Message("dir: ");
+    printVector3d(dir);
+    Base::Console().Message("proj: ");
+    printVector3d(proj);
+    Base::Console().Message("startDelta: ");
+    printVector3d(startDelta);
+    Base::Console().Message("projPoint: ");
+    printVector3d(projPoint);
+    
+    if (startVec * endVec < 0) {
+	// Projection is between the endpoints
+	Base::Console().Message("retval 0\n");
+	return 0;
+    }
+    else if (startVec * endVec < 1e-8) {
+	// Projection is in a tolerance range of one of the endpoints
+	if (endVec * dir < 0) {
+	    Base::Console().Message("retval 1\n");
+	    return 1; // close to segStart
+	}
+	else if (startVec * dir > 0) {
+	    Base::Console().Message("retval 2\n");
+	    return 2; // close to segEnd
+	}
+	else {
+	    Base::Console().Message("retval -3\n");
+	    return -3; // Something wrong with the segment
+	}
+    }
+    else if (startVec * dir < 0) {
+	Base::Console().Message("retval -1\n");
+	return -1;// Projection before segStart
+    }
+    else {
+	Base::Console().Message("retval -2\n");
+	return -2; // Projection beyond segEnd
+    }
 }
 // Python Sketcher feature ---------------------------------------------------------
 
