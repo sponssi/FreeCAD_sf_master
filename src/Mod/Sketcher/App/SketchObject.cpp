@@ -1858,7 +1858,208 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		addParallel = true;
 		break;
 	    case Sketcher::Tangent:
-		// To be implemented
+		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
+		    // Line on line/circle/arc
+		    Base::Console().Message("Tangent line on line\n");
+		    newConstP = (*it)->clone();
+		    
+		    if (geoIdInConstraint == 1) {
+			const Part::Geometry * otherGeo = getGeometry(newConstP->Second);
+			if (otherGeo->getTypeId() == Part::GeomLineSegment::getClassTypeId()) {
+			    Base::Vector3d otherMidPoint = (getPoint(newConstP->Second, Sketcher::end) - getPoint(newConstP->Second, Sketcher::start)) / 2 + getPoint(newConstP->Second, Sketcher::start);
+			    Base::Vector3d midPointProj;
+			    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+			    if (projPos == 0) {
+				// Projection on some segment
+				newConstP->First = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+			    }
+			    else if (projPos == 1 || projPos == -1) {
+				// Projection on startPoint or before it
+				newConstP->First = newSegIds.front();
+			    }
+			    else if (projPos == 2 || projPos == -2) {
+				// Projection on endPoint or beyond it
+				newConstP->First = newSegIds.back();
+			    }
+			    else {
+				// Some problem with the segment
+				Base::Console().Message("Some problem with original line.\n");
+				delete newConstP;
+				continue;
+			    }
+			    newConstVec.push_back(newConstP);
+			}
+			else if (otherGeo->getTypeId() == Part::GeomCircle::getClassTypeId()) {
+			    const Part::GeomCircle * otherGeoCircle;
+			    otherGeoCircle = dynamic_cast<const Part::GeomCircle *>(otherGeo);
+			    Base::Vector3d otherMidPoint = otherGeoCircle->getCenter();
+			    Base::Vector3d midPointProj;
+			    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+			    if (projPos == 0) {
+				// Projection on some segment
+				newConstP->First = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+			    }
+			    else if (projPos == 1 || projPos == -1) {
+				// Projection on startPoint or before it
+				newConstP->First = newSegIds.front();
+			    }
+			    else if (projPos == 2 || projPos == -2) {
+				// Projection on endPoint or beyond it
+				newConstP->First = newSegIds.back();
+			    }
+			    else {
+				// Some problem with the segment
+				Base::Console().Message("Some problem with original line.\n");
+				delete newConstP;
+				continue;
+			    }
+			    newConstVec.push_back(newConstP);
+			}
+			else if (otherGeo->getTypeId() == Part::GeomArcOfCircle::getClassTypeId()) {
+			    const Part::GeomArcOfCircle * otherGeoArc;
+			    otherGeoArc = dynamic_cast<const Part::GeomArcOfCircle *>(otherGeo);
+			    Base::Vector3d otherMidPoint = otherGeoArc->getCenter();
+			    Base::Vector3d midPointProj;
+			    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+			    if (projPos == 0) {
+				// Projection on some segment
+				newConstP->First = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+			    }
+			    else if (projPos == 1 || projPos == -1) {
+				// Projection on startPoint or before it
+				newConstP->First = newSegIds.front();
+			    }
+			    else if (projPos == 2 || projPos == -2) {
+				// Projection on endPoint or beyond it
+				newConstP->First = newSegIds.back();
+			    }
+			    else {
+				// Some problem with the segment
+				Base::Console().Message("Some problem with original line.\n");
+				delete newConstP;
+				continue;
+			    }
+			    newConstVec.push_back(newConstP);
+			}
+			else {
+			    Base::Console().Message("Unknown geometry for tangent constraint\n");
+			    delete newConstP;
+			    continue;
+			}
+		    }
+		    else {
+			const Part::Geometry * otherGeo = getGeometry(newConstP->First);
+			if (otherGeo->getTypeId() == Part::GeomLineSegment::getClassTypeId()) {
+			    Base::Vector3d otherMidPoint = (getPoint(newConstP->First, Sketcher::end) - getPoint(newConstP->First, Sketcher::start)) / 2 + getPoint(newConstP->First, Sketcher::start);
+			    Base::Vector3d midPointProj;
+			    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+			    if (projPos == 0) {
+				// Projection on some segment
+				newConstP->Second = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+			    }
+			    else if (projPos == 1 || projPos == -1) {
+				// Projection on startPoint or before it
+				newConstP->Second = newSegIds.front();
+			    }
+			    else if (projPos == 2 || projPos == -2) {
+				// Projection on endPoint or beyond it
+				newConstP->Second = newSegIds.back();
+			    }
+			    else {
+				// Some problem with the segment
+				Base::Console().Message("Some problem with original line.\n");
+				delete newConstP;
+				continue;
+			    }
+			    newConstVec.push_back(newConstP);
+			}
+			else if (otherGeo->getTypeId() == Part::GeomCircle::getClassTypeId()) {
+			    const Part::GeomCircle * otherGeoCircle;
+			    otherGeoCircle = dynamic_cast<const Part::GeomCircle *>(otherGeo);
+			    Base::Vector3d otherMidPoint = otherGeoCircle->getCenter();
+			    Base::Vector3d midPointProj;
+			    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+			    if (projPos == 0) {
+				// Projection on some segment
+				newConstP->Second = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+			    }
+			    else if (projPos == 1 || projPos == -1) {
+				// Projection on startPoint or before it
+				newConstP->Second = newSegIds.front();
+			    }
+			    else if (projPos == 2 || projPos == -2) {
+				// Projection on endPoint or beyond it
+				newConstP->Second = newSegIds.back();
+			    }
+			    else {
+				// Some problem with the segment
+				Base::Console().Message("Some problem with original line.\n");
+				delete newConstP;
+				continue;
+			    }
+			    newConstVec.push_back(newConstP);
+			}
+			else if (otherGeo->getTypeId() == Part::GeomArcOfCircle::getClassTypeId()) {
+			    const Part::GeomArcOfCircle * otherGeoArc;
+			    otherGeoArc = dynamic_cast<const Part::GeomArcOfCircle *>(otherGeo);
+			    Base::Vector3d otherMidPoint = otherGeoArc->getCenter();
+			    Base::Vector3d midPointProj;
+			    int projPos = getProjectionOnLineSegment(midPointProj, otherMidPoint, startPoint, endPoint);
+			    if (projPos == 0) {
+				// Projection on some segment
+				newConstP->Second = newSegIds[getSegmentNumByDistance(midPointProj, startPoint, segEndDistances)];
+			    }
+			    else if (projPos == 1 || projPos == -1) {
+				// Projection on startPoint or before it
+				newConstP->Second = newSegIds.front();
+			    }
+			    else if (projPos == 2 || projPos == -2) {
+				// Projection on endPoint or beyond it
+				newConstP->Second = newSegIds.back();
+			    }
+			    else {
+				// Some problem with the segment
+				Base::Console().Message("Some problem with original line.\n");
+				delete newConstP;
+				continue;
+			    }
+			    newConstVec.push_back(newConstP);
+			}
+			else {
+			    Base::Console().Message("Unknown geometry for tangent constraint\n");
+			    delete newConstP;
+			    continue;
+			}
+		    }
+		}
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none) {
+		    // Some other point on line
+		    newConstP = (*it)->clone();
+		    
+		    Base::Vector3d otherProj;
+		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
+		    
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
+			newConstP->Second = newSegIds.front();
+		    }
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
+			newConstP->Second = newSegIds.back();
+		    }
+		    else {
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
+		    }
+
+		    newConstVec.push_back(newConstP);
+		}
 		break;
 	    case Sketcher::Distance:
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
