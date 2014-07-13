@@ -92,7 +92,7 @@ int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, con
 
 void printVector3d(const Base::Vector3d & vec);
 
-int getProjectionOnLineSegment(Base::Vector3d projPoint, const Base::Vector3d & point, const Base::Vector3d & segStart, const Base::Vector3d & segEnd);
+int getProjectionOnLineSegment(Base::Vector3d & projPoint, const Base::Vector3d & point, const Base::Vector3d & segStart, const Base::Vector3d & segEnd);
 
 PROPERTY_SOURCE(Sketcher::SketchObject, Part::Part2DObject)
 
@@ -2144,7 +2144,7 @@ void printVector3d(const Base::Vector3d & vec)
     Base::Console().Message("vec: x=%f, y=%f, z=%f\n", vec.x, vec.y, vec.z);
 }
 
-int getProjectionOnLineSegment(Base::Vector3d projPoint, const Base::Vector3d & point, const Base::Vector3d & segStart, const Base::Vector3d & segEnd)
+int getProjectionOnLineSegment(Base::Vector3d & projPoint, const Base::Vector3d & point, const Base::Vector3d & segStart, const Base::Vector3d & segEnd)
 {
     Base::Vector3d dir = segEnd - segStart;
     Base::Vector3d proj, startDelta;
