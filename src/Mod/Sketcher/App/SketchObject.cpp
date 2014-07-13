@@ -1706,8 +1706,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     Base::Vector3d startPoint = getPoint(geoId, Sketcher::start);
     Base::Vector3d endPoint = getPoint(geoId, Sketcher::end);
     
-    // Check that the points are close ehough to the line
-    // TODO: check that the points are between the endpoints of the line
+    // Check that the points are close ehough to the line and between the endpoints
     for (int i = 0; i < splitPoints.size()-1; i++) {
 	if (splitPoints[i].DistanceToLine(lineSeg->getStartPoint(), lineSeg->getEndPoint() - lineSeg->getStartPoint()) > 1e-8) {
 	    return -4;

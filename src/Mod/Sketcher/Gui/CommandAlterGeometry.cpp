@@ -441,7 +441,7 @@ public:
     
     virtual void activated(ViewProviderSketch *sketchgui)
     {
-	setCursor(QPixmap(cursor_breakline), 7, 7);
+	setCursor(QPixmap(cursor_splitline), 7, 7);
 	if (!checkSelection()) {
 	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
 	}
@@ -532,12 +532,13 @@ public:
 	    case SoKeyboardEvent::ENTER:
 		// Finish point selection
 		Mode = STATUS_END;
-		unsetCursor();
+		releaseButton(Base::Vector2D(0.f, 0.f));
+		/*unsetCursor();
 		resetPositionText();
 		EditCurve.clear();
 		sketchgui->drawEdit(EditCurve);
 		Gui::Selection().clearSelection();
-		sketchgui->purgeHandler(); // No code after this line
+		sketchgui->purgeHandler(); // No code after this line*/
 		break;
 	}
     }    
