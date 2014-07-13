@@ -2113,7 +2113,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		}
 		break;
 	    case Sketcher::Angle:
-		// TODO: smarter selection of the proper segment
 		if (geoIdInConstraint == 1) {
 		    if ((*it)->Second == Constraint::GeoUndef) {
 			// Angle to the horizontal axis
@@ -2122,21 +2121,9 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
-		    else {
-			// Angle between two lines
-			newConstP = (*it)->clone();
-			newConstP->First = newSegIds.front();
-			newConstVec.push_back(newConstP);
-			addParallel = true;
-		    }
 		}
-		else if (geoIdInConstraint == 2) {
-		    // Angle between two lines
-		    newConstP = (*it)->clone();
-		    newConstP->Second = newSegIds.front();
-		    newConstVec.push_back(newConstP);
-		    addParallel = true;
-		}
+		// Line to line constraints seem to be handled by transferConstraints
+		// TODO: common parallel with line to line
 		break;
 	    case Sketcher::Perpendicular:
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
@@ -2229,7 +2216,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		}
 		break;
 	    case Sketcher::Equal:
-		// To be implemented
+		// Line to line equality doesn't work after splitting
 		break;
 	    case Sketcher::PointOnObject:
 		if (geoIdInConstraint == 2) {
@@ -2262,7 +2249,48 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		}
 		break;
 	    case Sketcher::Symmetric:
-		// To be implemented
+		// First and second should be handled by transferConstraints
+		if ((*it)->ThirdPos == Sketcher::none) {
+		    // Symmetric to line
+		     newConstP = (*it)->clone();
+		    
+		    Base::Vector3d otherProj;
+		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
+		    
+		    if (projPos == 0) {
+			// Projection on some segment
+			newConstP->Third = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+		    }
+		    else if (projPos == 1 || projPos == -1) {
+			// Projection on startPoint or before it
+			newConstP->Third = newSegIds.front();
+		    }
+		    else if (projPos == 2 || projPos == -2) {
+			// Projection on endPoint or beyond it
+			newConstP->Third = newSegIds.back();
+		    }
+		    else {
+			// Some problem with the segment
+			Base::Console().Message("Some problem with original line.\n");
+			delete newConstP;
+			continue;
+		    }
+		    
+		    newConstVec.push_back(newConstP);
+		}
+		else {
+		    // Symmetric to point
+		    newConstP = (*it)->clone();
+		    
+		    if(newConstP->ThirdPos == Sketcher::start) {
+			newConstP->Third = newSegIds.front();
+		    }
+		    else {
+			newConstP->Third = newSegIds.back();
+		    }
+		    
+		    newConstVec.push_back(newConstP);
+		}
 		break;
 	}
     }
