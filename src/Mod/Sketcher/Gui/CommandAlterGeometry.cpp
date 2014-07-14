@@ -282,6 +282,17 @@ public:
 	    sketchgui->purgeHandler();
 	}
     }
+    
+    void registerPressedKey(bool pressed, int key)
+    {
+	if (Mode == STATUS_SEEK_SECOND && key == SoKeyboardEvent::R && !pressed) {
+	    Mode = STATUS_SEEK_FIRST;
+	    EditCurve[0] = Base::Vector2D(0.f,0.f);
+	    EditCurve[3] = EditCurve[2] = EditCurve[1] = EditCurve[0];
+	    resetPositionText();
+	    sketchgui->drawEdit(EditCurve);
+	}
+    }
 
 protected:
     
@@ -531,14 +542,22 @@ public:
 	    case SoKeyboardEvent::F:
 	    case SoKeyboardEvent::ENTER:
 		// Finish point selection
-		Mode = STATUS_END;
-		releaseButton(Base::Vector2D(0.f, 0.f));
-		/*unsetCursor();
-		resetPositionText();
-		EditCurve.clear();
-		sketchgui->drawEdit(EditCurve);
-		Gui::Selection().clearSelection();
-		sketchgui->purgeHandler(); // No code after this line*/
+		if (!pressed) {
+		    Mode = STATUS_END;
+		    releaseButton(Base::Vector2D(0.f, 0.f));
+		}
+		break;
+	    case SoKeyboardEvent::R:
+		// Remove the previously added point
+		if (!pressed && !splitPoints.empty()) {
+		    splitPoints.pop_back();
+		    EditCurve[EditCurve.size()-5] = EditCurve[EditCurve.size()-2];
+		    EditCurve[EditCurve.size()-4] = EditCurve[EditCurve.size()-1];
+		    EditCurve.pop_back();
+		    EditCurve.pop_back();
+		    EditCurve.pop_back();
+		    sketchgui->drawEdit(EditCurve);
+		}
 		break;
 	}
     }    
