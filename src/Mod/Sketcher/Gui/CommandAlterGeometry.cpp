@@ -268,7 +268,12 @@ public:
 	    
 	    // TODO: add a way to prevent constraint addition to the segment being removed
 	    Gui::Command::openCommand("Break line");
-	    sketchgui->getSketchObject()->splitLine(lineId, breakPoints);
+	    try {
+		sketchgui->getSketchObject()->splitLine(lineId, breakPoints);
+	    }
+	    catch (Base::ValueError e) {
+		Base::Console().Message("%s", e.what());
+	    }
 	    // Segment to be removed should be with the second highest index
 	    sketchgui->getSketchObject()->delGeometry(sketchgui->getSketchObject()->getHighestCurveIndex() - 1);
 	    Gui::Command::commitCommand();
@@ -374,7 +379,7 @@ CmdSketcherBreakLine::CmdSketcherBreakLine()
     sAppModule      = "Sketcher";
     sGroup          = QT_TR_NOOP("Sketcher");
     sMenuText       = QT_TR_NOOP("Break line");
-    sToolTipText    = QT_TR_NOOP("Breakes the currently selected line into two gap separated lines");
+    sToolTipText    = QT_TR_NOOP("Breaks the currently selected line into two gap separated lines");
     sWhatsThis      = sToolTipText;
     sStatusTip      = sToolTipText;
     sPixmap         = "Sketcher_BreakLine";
@@ -511,7 +516,12 @@ public:
     {
 	if (Mode == STATUS_END) {
 	    Gui::Command::openCommand("Split line");
-	    sketchgui->getSketchObject()->splitLine(lineId, splitPoints);
+	    try {
+		sketchgui->getSketchObject()->splitLine(lineId, splitPoints);
+	    }
+	    catch (Base::ValueError e) {
+		Base::Console().Message("%s", e.what());
+	    }
 	    Gui::Command::commitCommand();
 	    Gui::Command::updateActive();
 	    

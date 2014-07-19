@@ -129,8 +129,8 @@ public:
     int trim(int geoId, const Base::Vector3d& point);
     
     /// split a line
-    int splitLine(int geoId, const Base::Vector3d& splitPoint);
-    int splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints);
+    void splitLine(int geoId, const Base::Vector3d& splitPoint);
+    void splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints);
 
     /// retrieves for a Vertex number the corresponding GeoId and PosId
     void getGeoVertexIndex(int VertexId, int &GeoId, PointPos &PosId) const;

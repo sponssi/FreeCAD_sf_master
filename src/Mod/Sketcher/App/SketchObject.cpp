@@ -82,10 +82,6 @@ public:
     Base::Vector3d comparePoint;
 };
 
-int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point);
-
-Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const Vector3d & endPoint, const Vector3d & splitPoint, const Vector3d & otherPoint);
-
 void printConstraintInfo(const Sketcher::Constraint * c);
 
 int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances);
@@ -1671,7 +1667,6 @@ void SketchObject::getGeoVertexIndex(int VertexId, int &GeoId, PointPos &PosId) 
     PosId = VertexId2PosId[VertexId];
 }
 
-
 int SketchObject::getVertexIndexGeoPos(int GeoId, PointPos PosId) const
 {
     for(int i=0;i<VertexId2GeoId.size();i++) {
@@ -1682,24 +1677,24 @@ int SketchObject::getVertexIndexGeoPos(int GeoId, PointPos PosId) const
     return -1;
 }
 
-int SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
+void SketchObject::splitLine(int GeoId, const Base::Vector3d& splitPoint)
 {
     std::vector<Base::Vector3d> vec;
     vec.push_back(splitPoint);
     splitLine(GeoId, vec);
 }
 
-int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints)
+void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints)
 {
     if (splitPoints.size() < 1) {
-	return -1;
+	throw Base::ValueError("splitLine: No splitpoints selected\n");
     }
     const Part::Geometry * geom = getGeometry(geoId);
     if(!geom) {
-	return -2;
+	throw Base::ValueError("splitLine: Unknown geometry\n");
     }
     if(geom->getTypeId() != Part::GeomLineSegment::getClassTypeId()) {
-	return -3;
+	throw Base::ValueError("splitLine: Invalid geometry type\n");
     }
     const Part::GeomLineSegment * lineSeg = dynamic_cast<const Part::GeomLineSegment*>(geom);
     
@@ -1709,25 +1704,17 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     // Check that the points are close ehough to the line and between the endpoints
     for (int i = 0; i < splitPoints.size()-1; i++) {
 	if (splitPoints[i].DistanceToLine(lineSeg->getStartPoint(), lineSeg->getEndPoint() - lineSeg->getStartPoint()) > 1e-8) {
-	    return -4;
+	    throw Base::ValueError("splitLine: Split point not on line\n");
 	}
 	if ((startPoint - splitPoints[i]) * (endPoint - splitPoints[i]) > 0) {
-	    return -5; // not between endpoints
+	    throw Base::ValueError("splitLine: Split point not between line endpoints\n");
 	}
     }
     
     CompareDistanceFromPoint compLen(startPoint);
-    //CompareDistanceFromPoint compLen;
-    //compLen.comparePoint = startPoint;
     
     // Sort the split points from startpoint to endpoint
     std::sort(splitPoints.begin(), splitPoints.end(), compLen);
-    
-    // debug
-    for (std::vector<Base::Vector3d>::iterator it = splitPoints.begin(); it != splitPoints.end(); ++it)
-    {
-	Base::Console().Message("Distance from startPoint=%f\n", Base::Vector3d((*it) - startPoint).Length());
-    }
     
     // Create new segments
     int numberOfSegments = splitPoints.size() + 1;
@@ -1737,7 +1724,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     Base::Vector3d tmpDist;
     
     tmpDist = splitPoints[0] - startPoint;
-    if (tmpDist.Length() < 1e-8) return -6; // too close to startPoint
+    if (tmpDist.Length() < 1e-8) throw Base::ValueError("splitLine: Split point too close to line start point\n");
     segEndDistances.push_back(tmpDist.Length());
     newSeg.setPoints(startPoint, splitPoints[0]);
     newSegIds.push_back(addGeometry(&newSeg));
@@ -1747,8 +1734,10 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 	tmpDist = splitPoints[i] - startPoint;
 	if (tmpDist.Length() - segEndDistances.back() < 1e-8) {
 	    // too close to previous point
-	    for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end(); ++it) delGeometry(*it);
-	    return -7;
+	    for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end(); ++it) {
+		delGeometry(*it);
+	    }
+	    throw Base::ValueError("splitLine: Split points too close to eachother\n");
 	}
 	segEndDistances.push_back(tmpDist.Length());
 	newSeg.setPoints(splitPoints[i-1], splitPoints[i]);
@@ -1759,18 +1748,11 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     if (tmpDist.Length() - segEndDistances.back() < 1e-8) {
 	// too close to previous point
 	for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end();++it) delGeometry(*it);
-	return -8;
+	throw Base::ValueError("splitLine: Split point too close to line end point\n");
     }
     segEndDistances.push_back(tmpDist.Length());
     newSeg.setPoints(splitPoints.back(), endPoint);
     newSegIds.push_back(addGeometry(&newSeg));
-    
-
-    // debug
-    Base::Console().Message("newSegIds:\n");
-    for (int i = 0; i < newSegIds.size(); i++) {
-	Base::Console().Message("\t%i\n", newSegIds[i]);
-    }
     
     // Move the constraints of the original line to the first and last new segmets
     transferConstraints(geoId, Sketcher::start, newSegIds.front(), Sketcher::start);
@@ -1798,13 +1780,8 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 	    geoIdInConstraint = 3;
 	}
 	else {
-	    Base::Console().Message("Constraint skipped:\n");
-	    //printConstraintInfo((*it));
 	    continue;
 	}
-	
-	Base::Console().Message("Handling constraint:\n");
-	printConstraintInfo((*it));
 	
 	switch ((*it)->Type)
 	{
@@ -1839,8 +1816,8 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			newConstP->First = newSegIds.back();
 		    }
 		    else {
-			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			//  Some problem with the segment
+			Base::Console().Message("splitLine: Parallel constraint skipped due to unknown geometry error.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -1863,7 +1840,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		    else {
 			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			Base::Console().Message("splitLine: Parallel constraint skipped due to unknown geometry error.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -1874,7 +1851,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 	    case Sketcher::Tangent:
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    // Line on line/circle/arc
-		    Base::Console().Message("Tangent line on line\n");
 		    newConstP = (*it)->clone();
 		    
 		    if (geoIdInConstraint == 1) {
@@ -1897,7 +1873,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    }
 			    else {
 				// Some problem with the segment
-				Base::Console().Message("Some problem with original line.\n");
+				Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error.\n");
 				delete newConstP;
 				continue;
 			    }
@@ -1924,7 +1900,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    }
 			    else {
 				// Some problem with the segment
-				Base::Console().Message("Some problem with original line.\n");
+				Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error line.\n");
 				delete newConstP;
 				continue;
 			    }
@@ -1951,7 +1927,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    }
 			    else {
 				// Some problem with the segment
-				Base::Console().Message("Some problem with original line.\n");
+				Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error.\n");
 				delete newConstP;
 				continue;
 			    }
@@ -1959,7 +1935,8 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    addParallel = true;
 			}
 			else {
-			    Base::Console().Message("Unknown geometry for tangent constraint\n");
+			    //
+			    Base::Console().Message("splitLine: unknown geometry for tangent constraint\n");
 			    delete newConstP;
 			    continue;
 			}
@@ -1984,7 +1961,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    }
 			    else {
 				// Some problem with the segment
-				Base::Console().Message("Some problem with original line.\n");
+				Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error.\n");
 				delete newConstP;
 				continue;
 			    }
@@ -2011,7 +1988,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    }
 			    else {
 				// Some problem with the segment
-				Base::Console().Message("Some problem with original line.\n");
+				Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error.\n");
 				delete newConstP;
 				continue;
 			    }
@@ -2038,7 +2015,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    }
 			    else {
 				// Some problem with the segment
-				Base::Console().Message("Some problem with original line.\n");
+				Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error.\n");
 				delete newConstP;
 				continue;
 			    }
@@ -2046,7 +2023,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			    addParallel = true;
 			}
 			else {
-			    Base::Console().Message("Unknown geometry for tangent constraint\n");
+			    Base::Console().Message("splitLine: unknown geometry for tangent constraint\n");
 			    delete newConstP;
 			    continue;
 			}
@@ -2073,7 +2050,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		    else {
 			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			Base::Console().Message("splitLine: Tangent constraint skipped due to unknown geometry error.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -2114,7 +2091,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		    else {
 			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			Base::Console().Message("splitLine: Distance constraint skipped due to unknown geometry error.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -2169,7 +2146,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			}
 			else {
 			    // Some problem with the segment
-			    Base::Console().Message("Some problem with original line.\n");
+			    Base::Console().Message("splitLine: Pernpendicular constraint skipped due to unknown geometry error.\n");
 			    delete newConstP;
 			    continue;
 			}
@@ -2197,7 +2174,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 			}
 			else {
 			    // Some problem with the segment
-			    Base::Console().Message("Some problem with original line.\n");
+			    Base::Console().Message("splitLine: Pernpendicular constraint skipped due to unknown geometry error.\n");
 			    delete newConstP;
 			    continue;
 			}
@@ -2227,7 +2204,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		    else {
 			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			Base::Console().Message("splitLine: Pernpendicular constraint skipped due to unknown geometry error.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -2261,7 +2238,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		    else {
 			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			Base::Console().Message("splitLine: Unknown problem with original line.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -2292,7 +2269,7 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
 		    }
 		    else {
 			// Some problem with the segment
-			Base::Console().Message("Some problem with original line.\n");
+			Base::Console().Message("splitLine: Unknown problem with original line.\n");
 			delete newConstP;
 			continue;
 		    }
@@ -2343,9 +2320,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     
     delGeometry(geoId);
     
-    // debug
-    Base::Console().Message("newConstVec.size()=%i\n", newConstVec.size());
-    
     for(std::vector<Constraint *>::iterator it = newConstVec.begin(); it != newConstVec.end(); ++it) {
 	if (*it) delete (*it);
     }
@@ -2353,9 +2327,6 @@ int SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoints
     Constraints.acceptGeometry(getCompleteGeometry());
 
     rebuildVertexIndex();
-    
-    return 0;
-
 }
 
 // debug info
@@ -2377,56 +2348,8 @@ void printConstraintInfo(const Sketcher::Constraint * c)
 
 // Helper functions TODO: move to some place better
 
-// Returns the PointPos of the line segment closer to point
-// SIGSEGV???
-/*Sketcher::PointPos getClosestEndpoint(const Part::GeomLineSegment * line, Base::Vector3d point) {
-    Base::Vector3d distStart = line->getStartPoint() - point;
-    Base::Vector3d distEnd = line->getEndPoint() - point;
-    
-    if (distStart.Length() <= distEnd.Length()) {
-	return Sketcher::start;
-    }
-    else {
-	return Sketcher::end;
-    }
-}*/
-
-// Returns 1 or 2 depending is pt1 or pt2 closer to point
-int getCloserPoint(Base::Vector3d pt1, Base::Vector3d pt2, Base::Vector3d point)
-{
-    Base::Vector3d dist1 = pt1 - point;
-    Base::Vector3d dist2 = pt2 - point;
-   if(dist1.Length() <= dist2.Length()) return 1;
-   else return 2;
-}
-
-// Returns on which splitted segment the projection of otherPoint lies on or is closer to
-Sketcher::PointPos getSplittedSegmentOfPoint(const Vector3d & startPoint, const Vector3d & endPoint, const Vector3d & splitPoint, const Vector3d & otherPoint)
-{
-    Base::Vector3d dir1 = startPoint - otherPoint;
-    Base::Vector3d dir2 = endPoint - otherPoint;
-    Base::Vector3d dir3 = splitPoint - otherPoint;
-    if ( dir1*dir3 > 0 && dir2*dir3 > 0 ) {
-	// otherPoint not between endpoints
-	if (getCloserPoint(startPoint, endPoint, otherPoint) == 1) {
-	    return Sketcher::start;
-	}
-	else {
-	    return Sketcher::end;
-	}
-    }
-    else if (dir1*dir3 < 0) {
-	// otherPoint on startPoint sided segment
-	return Sketcher::start;
-    }
-    else {
-	return Sketcher::end;
-    }
-}
-
 int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, const std::vector<double> & distances)
 {
-    if (distances.size() < 1) return -1; // Dangerous
     Base::Vector3d dist = point - startPoint;
     std::vector<double>::const_iterator it = std::upper_bound(distances.begin(), distances.end(), dist.Length());
     if (!(*it)) {
@@ -2434,7 +2357,6 @@ int getSegmentNumByDistance(Base::Vector3d point, Base::Vector3d startPoint, con
 	it = distances.end();
     }
     
-    Base::Console().Message("getSegmentNumByDistance: dist.Length()=%f, retval=%i\n", dist.Length(), it-distances.begin());
     return it - distances.begin();
 }
 
@@ -2454,47 +2376,26 @@ int getProjectionOnLineSegment(Base::Vector3d & projPoint, const Base::Vector3d 
     Base::Vector3d startVec = projPoint - segStart;
     Base::Vector3d endVec = projPoint - segEnd;
     
-    Base::Console().Message("point: ");
-    printVector3d(point);
-    Base::Console().Message("segStart: ");
-    printVector3d(segStart);
-    Base::Console().Message("segEnd: ");
-    printVector3d(segEnd);
-    Base::Console().Message("dir: ");
-    printVector3d(dir);
-    Base::Console().Message("proj: ");
-    printVector3d(proj);
-    Base::Console().Message("startDelta: ");
-    printVector3d(startDelta);
-    Base::Console().Message("projPoint: ");
-    printVector3d(projPoint);
-    
     if (startVec * endVec < 0) {
 	// Projection is between the endpoints
-	Base::Console().Message("retval 0\n");
 	return 0;
     }
     else if (startVec * endVec < 1e-8) {
 	// Projection is in a tolerance range of one of the endpoints
 	if (endVec * dir < 0) {
-	    Base::Console().Message("retval 1\n");
 	    return 1; // close to segStart
 	}
 	else if (startVec * dir > 0) {
-	    Base::Console().Message("retval 2\n");
 	    return 2; // close to segEnd
 	}
 	else {
-	    Base::Console().Message("retval -3\n");
 	    return -3; // Something wrong with the segment
 	}
     }
     else if (startVec * dir < 0) {
-	Base::Console().Message("retval -1\n");
 	return -1;// Projection before segStart
     }
     else {
-	Base::Console().Message("retval -2\n");
 	return -2; // Projection beyond segEnd
     }
 }
