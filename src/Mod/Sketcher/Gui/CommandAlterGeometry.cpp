@@ -438,19 +438,61 @@ static const char *cursor_splitline[]={
 "................................",
 "................................"};
 
+static const char *cursor_splitline_ok[]={
+"32 32 3 1",
+"+ c white",
+"# c green",
+". c None",
+"......+.........................",
+"......+.........................",
+"......+.........................",
+"......+.........................",
+"......+.........................",
+"................................",
+"+++++...+++++...................",
+"................................",
+"......+...............###.......",
+"......+...............#.#.......",
+"......+...............###.......",
+"......+..............#..........",
+"......+.............#...........",
+"....................#...........",
+"...................#............",
+"..................#.............",
+"................###.............",
+"................#.#.............",
+"................###.............",
+"................#...............",
+"...............#................",
+"..............#.................",
+"..............#.................",
+".............#..................",
+"..........###...................",
+"..........#.#...................",
+"..........###...................",
+"................................",
+"................................",
+"................................",
+"................................",
+"................................"};
 
 // Multipoint splitline
 class DrawSketchHandlerSplitLine: public DrawSketchHandler
 {
 
 public:
-    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(3), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0) {}
+    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(3), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0), mMode(MOUSE_ADD), okCursor(QPixmap(cursor_splitline_ok), 7, 7) {}
 
     // mode table
     enum SelectMode {
 	STATUS_START,
 	STATUS_SEEK_POINT,
 	STATUS_END
+    };
+    
+    enum MouseMode {
+	MOUSE_ADD,
+	MOUSE_FINISH
     };
     
     virtual ~DrawSketchHandlerSplitLine() {}
@@ -481,9 +523,11 @@ public:
 	if (startVec * origLineDir <= 0 || endVec * origLineDir >= 0) {
 	    // Point is not on the line
 	    pointOnLine = false;
+	    applyCursor(okCursor);
 	}
 	else {
 	    pointOnLine = true;
+	    applyCursor();
 	}
 	
 	if (Mode == STATUS_SEEK_POINT) {
@@ -499,22 +543,37 @@ public:
 	    }
 	}
 	
-	sketchgui->drawEdit(EditCurve);
-	applyCursor();	
+	sketchgui->drawEdit(EditCurve);	
     }
     
     virtual bool pressButton(Base::Vector2D onSketchPos)
     {
-	// TODO: button mode setting: select last or add to selection?
+	// TODO: Choose a selection mode and remove the other
 	if (Mode == STATUS_SEEK_POINT && pointOnLine == true) {
-	    Mode = STATUS_END;
+	    if (mMode == MOUSE_FINISH) {
+		Mode = STATUS_END;
+	    }
 	    splitPoints.push_back(currentSplitPoint);
-	}	
+	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+	}
+	else if(Mode == STATUS_SEEK_POINT && pointOnLine == false && mMode == MOUSE_ADD) {
+	    Mode = STATUS_END;
+	}
     }
     
     virtual bool releaseButton(Base::Vector2D onSketchPos)
     {
-	if (Mode == STATUS_END) {
+	if (Mode != STATUS_END) {
+	    if (pointOnLine) {
+		applyCursor();
+	    }
+	    else {
+		applyCursor(okCursor);
+	    }
+	}
+	else {
 	    Gui::Command::openCommand("Split line");
 	    try {
 		sketchgui->getSketchObject()->splitLine(lineId, splitPoints);
@@ -536,7 +595,6 @@ public:
     
     void registerPressedKey(bool pressed, int key)
     {
-	// TODO: remove previous point from selection
 	// FIXME: holding down a key adds multiple points
 	switch (key)
 	{
@@ -549,7 +607,7 @@ public:
 		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
 		}
 		break;
-	    case SoKeyboardEvent::F:
+	    //case SoKeyboardEvent::F:
 	    case SoKeyboardEvent::ENTER:
 		// Finish point selection
 		if (!pressed) {
@@ -569,11 +627,22 @@ public:
 		    sketchgui->drawEdit(EditCurve);
 		}
 		break;
+	    case SoKeyboardEvent::Z:
+		// Swithc mouse selection mode. TODO: for testing, to be removed
+		if (!pressed && mMode == MOUSE_ADD) {
+		    mMode = MOUSE_FINISH;
+		}
+		else if (!pressed && mMode == MOUSE_FINISH) {
+		    mMode = MOUSE_ADD;
+		}
+		break;
 	}
     }    
     
 protected:
     SelectMode Mode;
+    MouseMode mMode;
+    QCursor okCursor;
     std::vector<Base::Vector2D> EditCurve;
     bool pointOnLine;
     int lineId;
