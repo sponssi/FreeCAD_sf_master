@@ -738,7 +738,25 @@ void CmdSketcherSplitLine::activated(int iMsg)
 
 bool CmdSketcherSplitLine::isActive(void)
 {
-    return isAlterGeoActive( getActiveGuiDocument() );
+    if (isAlterGeoActive( getActiveGuiDocument() ))
+    {
+	std::vector<Gui::SelectionObject> selection = Gui::Selection().getSelectionEx();
+	if (selection.size() != 1) return false;
+	
+	const std::vector<std::string> &SubNames = selection[0].getSubNames();
+	if (SubNames.size() != 1) return false;
+	
+	Sketcher::SketchObject* Obj = dynamic_cast<Sketcher::SketchObject*>(selection[0].getObject());
+	int GeoId1;
+	Sketcher::PointPos PosId1;
+	getIdsFromName(SubNames[0], Obj, GeoId1, PosId1);
+	
+	if (!isEdge(GeoId1, PosId1) || GeoId1 < 0 || Obj->getGeometry(GeoId1)->getTypeId() != Part::GeomLineSegment::getClassTypeId()) return false;
+	
+	return true;
+	
+    }
+    return false;
 }
 
 
