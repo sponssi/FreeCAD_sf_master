@@ -1734,7 +1734,7 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 	tmpDist = splitPoints[i] - startPoint;
 	if (tmpDist.Length() - segEndDistances.back() < 1e-8) {
 	    // too close to previous point
-	    for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end(); ++it) {
+	    for (std::vector<int>::reverse_iterator it = newSegIds.rbegin(); it != newSegIds.rend(); ++it) {
 		delGeometry(*it);
 	    }
 	    throw Base::ValueError("splitLine: Split points too close to eachother\n");
@@ -1747,7 +1747,7 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
     tmpDist = endPoint - startPoint;
     if (tmpDist.Length() - segEndDistances.back() < 1e-8) {
 	// too close to previous point
-	for (std::vector<int>::iterator it = newSegIds.begin(); it != newSegIds.end();++it) delGeometry(*it);
+	for (std::vector<int>::reverse_iterator it = newSegIds.rbegin(); it != newSegIds.rend();++it) delGeometry(*it);
 	throw Base::ValueError("splitLine: Split point too close to line end point\n");
     }
     segEndDistances.push_back(tmpDist.Length());
@@ -1755,8 +1755,8 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
     newSegIds.push_back(addGeometry(&newSeg));
     
     // Move the constraints of the original line to the first and last new segmets
-    transferConstraints(geoId, Sketcher::start, newSegIds.front(), Sketcher::start);
-    transferConstraints(geoId, Sketcher::end, newSegIds.back(), Sketcher::end);
+    //transferConstraints(geoId, Sketcher::start, newSegIds.front(), Sketcher::start);
+    //transferConstraints(geoId, Sketcher::end, newSegIds.back(), Sketcher::end);
     
     std::vector<Constraint *> newConstVec;
     Sketcher::Constraint * newConstP;
@@ -1794,6 +1794,7 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 		    newConstVec.push_back(newConstP);
 		}
 		HVAdded = true;
+		// point on point???
 		break;
 	    case Sketcher::Parallel:
 		// Two lines
@@ -2058,6 +2059,31 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 		    newConstVec.push_back(newConstP);
 		    addParallel = true;
 		}
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos != Sketcher::none) {
+		    // point on point
+		    if (geoIdInConstraint == 1) {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = newSegIds.front();
+			}
+			else {
+			    newConstP->First = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
+		    else {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->SecondPos == Sketcher::start) {
+			    newConstP->Second = newSegIds.front();
+			}
+			else {
+			    newConstP->Second = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
+		}
 		break;
 	    case Sketcher::Distance:
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
@@ -2071,37 +2097,76 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 		    addParallel = true;
 		}
 		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none) {
-		    // Distance of some point from the original line
-		    newConstP = (*it)->clone();
-		    
-		    Base::Vector3d otherProj;
-		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
-		    
-		    if (projPos == 0) {
-			// Projection on some segment
-			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
-		    }
-		    else if (projPos == 1 || projPos == -1) {
-			// Projection on startPoint or before it
-			newConstP->Second = newSegIds.front();
-		    }
-		    else if (projPos == 2 || projPos == -2) {
-			// Projection on endPoint or beyond it
-			newConstP->Second = newSegIds.back();
+		    if (geoIdInConstraint == 1) {
+			// Distance of endpoint from some other line
+			newConstP = (*it)->clone();
+			
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = newSegIds.front();
+			}
+			else {
+			    newConstP->First = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
 		    }
 		    else {
-			// Some problem with the segment
-			Base::Console().Message("splitLine: Distance constraint skipped due to unknown geometry error.\n");
-			delete newConstP;
-			continue;
-		    }
+			// Distance of some point from the original line
+			newConstP = (*it)->clone();
+		    
+			Base::Vector3d otherProj;
+			int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
+		    
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, startPoint, segEndDistances)];
+			}
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->Second = newSegIds.front();
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
+			    newConstP->Second = newSegIds.back();
+			}
+			else {
+			    // Some problem with the segment
+			    Base::Console().Message("splitLine: Distance constraint skipped due to unknown geometry error.\n");
+			    delete newConstP;
+			    continue;
+			}
 
-		    newConstVec.push_back(newConstP);
+			newConstVec.push_back(newConstP);
+		    }
+		}
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos != Sketcher::none) {
+		    // point to point distance
+		    if (geoIdInConstraint == 1) {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = newSegIds.front();
+			}
+			else {
+			    newConstP->First = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
+		    else {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->SecondPos == Sketcher::start) {
+			    newConstP->Second = newSegIds.front();
+			}
+			else {
+			    newConstP->Second = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
 		}
 		break;
 	    case Sketcher::DistanceX:
 	    case Sketcher::DistanceY:
-		if ((*it)->Second == Constraint::GeoUndef) {
+		if ((*it)->Second == Constraint::GeoUndef && (*it)->FirstPos == Sketcher::none) {
 		    // Hor/vert length of the original line
 		    newConstP = (*it)->clone();
 		    newConstP->First = newSegIds.front();
@@ -2109,6 +2174,43 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 		    newConstP->Second = newSegIds.back();
 		    newConstP->SecondPos = Sketcher::end;
 		    newConstVec.push_back(newConstP);
+		}
+		else if ((*it)->Second == Constraint::GeoUndef && (*it)->FirstPos != Sketcher::none) {
+		    // Distance from H/V axis
+		    newConstP = (*it)->clone();
+			
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = newSegIds.front();
+		    }
+		    else {
+			newConstP->First = newSegIds.back();
+		    }
+		    newConstVec.push_back(newConstP);
+		}
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos != Sketcher::none) {
+		    // Distance between two points
+		    if (geoIdInConstraint == 1) {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = newSegIds.front();
+			}
+			else {
+			    newConstP->First = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
+		    else {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->SecondPos == Sketcher::start) {
+			    newConstP->Second = newSegIds.front();
+			}
+			else {
+			    newConstP->Second = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
 		}
 		break;
 	    case Sketcher::Angle:
@@ -2120,8 +2222,173 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 			newConstVec.push_back(newConstP);
 			addParallel = true;
 		    }
+		    else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos != Sketcher::none) {
+			// Line to line angle with endpoints
+			newConstP = (*it)->clone();
+			
+			Base::Vector3d otherProj;
+			int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->Second, newConstP->SecondPos), startPoint, endPoint);
+		    
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->First = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+			}
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->First = newSegIds.front();
+			    newConstP->FirstPos = Sketcher::start;
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
+			    newConstP->First = newSegIds.back();
+			    newConstP->FirstPos = Sketcher::end;
+			}
+			else {
+			    // Some problem with the segment
+			    Base::Console().Message("splitLine: Angle constraint skipped due to unknown geometry error.\n");
+			    delete newConstP;
+			    continue;
+			}
+			
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		    else if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
+			// Line to line angle
+			newConstP = (*it)->clone();
+			
+			// Get the point closer to the original line
+			Base::Vector3d startProj, endProj, otherProj;
+			int startPos = getProjectionOnLineSegment(startProj, getPoint(newConstP->Second, Sketcher::start), startPoint, endPoint);
+			int endPos = getProjectionOnLineSegment(endProj, getPoint(newConstP->Second, Sketcher::end), startPoint, endPoint);
+			int projPos;
+			
+			Base::Vector3d startDist = startProj - getPoint(newConstP->Second, Sketcher::start);
+			Base::Vector3d endDist = endProj - getPoint(newConstP->Second, Sketcher::end);
+			
+			if (startDist.Length() < endDist.Length()) {
+			    // startpoint closer to original line
+			    otherProj = startProj;
+			    projPos = startPos;
+			}
+			else {
+			    otherProj = endProj;
+			    projPos = endPos;
+			}
+			
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->First = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+			}
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->First = newSegIds.front();
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
+			    newConstP->First = newSegIds.back();
+			}
+			else {
+			    // Some problem with the segment
+			    Base::Console().Message("splitLine: Angle constraint skipped due to unknown geometry error.\n");
+			    delete newConstP;
+			    continue;
+			}
+			
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		    else {
+			// Some problem with the segment
+			Base::Console().Message("splitLine: Angle constraint skipped due to unknown geometry error.\n");
+			//delete newConstP;
+			continue;
+		    }
 		}
-		// Line to line constraints seem to be handled by transferConstraints
+		else if (geoIdInConstraint == 2) {
+		    if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos != Sketcher::none) {
+			// Line to line angle with endpoints
+			newConstP = (*it)->clone();
+			
+			Base::Vector3d otherProj;
+			int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
+		    
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+			}
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->Second = newSegIds.front();
+			    newConstP->SecondPos = Sketcher::start;
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
+			    newConstP->Second = newSegIds.back();
+			    newConstP->SecondPos = Sketcher::end;
+			}
+			else {
+			    // Some problem with the segment
+			    Base::Console().Message("splitLine: Angle constraint skipped due to unknown geometry error.\n");
+			    delete newConstP;
+			    continue;
+			}
+			
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		    else if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
+			// Line to line angle
+			newConstP = (*it)->clone();
+			
+			// Get the endpoint closer to the original line
+			Base::Vector3d startProj, endProj, otherProj;
+			int startPos = getProjectionOnLineSegment(startProj, getPoint(newConstP->First, Sketcher::start), startPoint, endPoint);
+			int endPos = getProjectionOnLineSegment(endProj, getPoint(newConstP->First, Sketcher::end), startPoint, endPoint);
+			int projPos;
+			
+			Base::Vector3d startDist = startProj - getPoint(newConstP->First, Sketcher::start);
+			Base::Vector3d endDist = endProj - getPoint(newConstP->First, Sketcher::end);
+			
+			if (startDist.Length() < endDist.Length()) {
+			    // startpoint closer to original line
+			    otherProj = startProj;
+			    projPos = startPos;
+			}
+			else {
+			    otherProj = endProj;
+			    projPos = endPos;
+			}
+			
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+			}
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->Second = newSegIds.front();
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
+			    newConstP->Second = newSegIds.back();
+			}
+			else {
+			    // Some problem with the segment
+			    Base::Console().Message("splitLine: Angle constraint skipped due to unknown geometry error.\n");
+			    delete newConstP;
+			    continue;
+			}
+			
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		    else {
+			// Some problem with the segment
+			Base::Console().Message("splitLine: Angle constraint skipped due to unknown geometry error.\n");
+			//delete newConstP;
+			continue;
+		    }
+		}
 		break;
 	    case Sketcher::Perpendicular:
 		if ((*it)->FirstPos == Sketcher::none && (*it)->SecondPos == Sketcher::none) {
@@ -2183,41 +2450,93 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 			addParallel = true;
 		    }
 		}
-		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none && geoIdInConstraint == 2) {
-		    // Some other point on line
-		    newConstP = (*it)->clone();
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos == Sketcher::none) {
 		    
-		    Base::Vector3d otherProj;
-		    int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
-		    
-		    if (projPos == 0) {
-			// Projection on some segment
-			newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
-		    }
-		    else if (projPos == 1 || projPos == -1) {
-			// Projection on startPoint or before it
-			newConstP->Second = newSegIds.front();
-		    }
-		    else if (projPos == 2 || projPos == -2) {
-			// Projection on endPoint or beyond it
-			newConstP->Second = newSegIds.back();
+		    if (geoIdInConstraint == 1) {
+			// endpoint on some other line
+			newConstP = (*it)->clone();
+			
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = newSegIds.front();
+			}
+			else {
+			    newConstP->First = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
 		    }
 		    else {
-			// Some problem with the segment
-			Base::Console().Message("splitLine: Pernpendicular constraint skipped due to unknown geometry error.\n");
-			delete newConstP;
-			continue;
-		    }
+			// Some other point on line
+			newConstP = (*it)->clone();
 		    
-		    newConstVec.push_back(newConstP);
-		    addParallel = true;
+			Base::Vector3d otherProj;
+			int projPos = getProjectionOnLineSegment(otherProj, getPoint(newConstP->First, newConstP->FirstPos), startPoint, endPoint);
+		    
+			if (projPos == 0) {
+			    // Projection on some segment
+			    newConstP->Second = newSegIds[getSegmentNumByDistance(otherProj, 	startPoint, segEndDistances)];
+			}
+			else if (projPos == 1 || projPos == -1) {
+			    // Projection on startPoint or before it
+			    newConstP->Second = newSegIds.front();
+			}
+			else if (projPos == 2 || projPos == -2) {
+			    // Projection on endPoint or beyond it
+			    newConstP->Second = newSegIds.back();
+			}
+			else {
+			    // Some problem with the segment
+			    Base::Console().Message("splitLine: Pernpendicular constraint skipped due to unknown geometry error.\n");
+			    delete newConstP;
+			    continue;
+			}
+		    
+			newConstVec.push_back(newConstP);
+			addParallel = true;
+		    }
+		}
+		else if ((*it)->FirstPos != Sketcher::none && (*it)->SecondPos != Sketcher::none) {
+		    // point on point
+		    if (geoIdInConstraint == 1) {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->FirstPos == Sketcher::start) {
+			    newConstP->First = newSegIds.front();
+			}
+			else {
+			    newConstP->First = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
+		    else {
+			newConstP = (*it)->clone();
+			
+			if (newConstP->SecondPos == Sketcher::start) {
+			    newConstP->Second = newSegIds.front();
+			}
+			else {
+			    newConstP->Second = newSegIds.back();
+			}
+			newConstVec.push_back(newConstP);
+		    }
 		}
 		break;
 	    case Sketcher::Equal:
 		// Line to line equality doesn't work after splitting
 		break;
 	    case Sketcher::PointOnObject:
-		if (geoIdInConstraint == 2) {
+		if (geoIdInConstraint == 1) {
+		    // endpoint on some other line
+		    newConstP = (*it)->clone();
+		    
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = newSegIds.front();
+		    }
+		    else {
+			newConstP->First = newSegIds.back();
+		    }
+		    newConstVec.push_back(newConstP);
+		}
+		else if (geoIdInConstraint == 2) {
 		    // Some other point on line
 		    newConstP = (*it)->clone();
 		    
@@ -2247,9 +2566,32 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 		}
 		break;
 	    case Sketcher::Symmetric:
-		// First and second should be handled by transferConstraints
-		if ((*it)->ThirdPos == Sketcher::none) {
-		    // Symmetric to line
+		if (geoIdInConstraint == 1) {
+		    // symmetric to some other point/line
+		    newConstP = (*it)->clone();
+		    
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = newSegIds.front();
+		    }
+		    else {
+			newConstP->First = newSegIds.back();
+		    }
+		    newConstVec.push_back(newConstP);
+		}
+		else if (geoIdInConstraint == 2) {
+		    // symmetric to some other point/line
+		    newConstP = (*it)->clone();
+		    
+		    if (newConstP->SecondPos == Sketcher::start) {
+			newConstP->Second = newSegIds.front();
+		    }
+		    else {
+			newConstP->Second = newSegIds.back();
+		    }
+		    newConstVec.push_back(newConstP);
+		}
+		else if (geoIdInConstraint == 3 && (*it)->ThirdPos == Sketcher::none) {
+		    // Symmetric to original line
 		     newConstP = (*it)->clone();
 		    
 		    Base::Vector3d otherProj;
@@ -2277,7 +2619,7 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 		    newConstVec.push_back(newConstP);
 		}
 		else {
-		    // Symmetric to point
+		    // Symmetric to original endpoint
 		    newConstP = (*it)->clone();
 		    
 		    if(newConstP->ThirdPos == Sketcher::start) {
@@ -2287,6 +2629,28 @@ void SketchObject::splitLine(int geoId, std::vector<Base::Vector3d> & splitPoint
 			newConstP->Third = newSegIds.back();
 		    }
 		    
+		    newConstVec.push_back(newConstP);
+		}
+		break;
+	    case Sketcher::Coincident:
+		if (geoIdInConstraint == 1) {
+		    newConstP = (*it)->clone();
+		    if (newConstP->FirstPos == Sketcher::start) {
+			newConstP->First = newSegIds.front();
+		    }
+		    else {
+			newConstP->First = newSegIds.back();
+		    }
+		    newConstVec.push_back(newConstP);
+		}
+		else {
+		    newConstP = (*it)->clone();
+		    if (newConstP->SecondPos == Sketcher::start) {
+			newConstP->Second = newSegIds.front();
+		    }
+		    else {
+			newConstP->Second = newSegIds.back();
+		    }
 		    newConstVec.push_back(newConstP);
 		}
 		break;

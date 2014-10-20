@@ -481,18 +481,13 @@ class DrawSketchHandlerSplitLine: public DrawSketchHandler
 {
 
 public:
-    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(3), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0), mMode(MOUSE_ADD), okCursor(QPixmap(cursor_splitline_ok), 7, 7) {}
+    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(3), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0),  okCursor(QPixmap(cursor_splitline_ok), 7, 7) {}
 
     // mode table
     enum SelectMode {
 	STATUS_START,
 	STATUS_SEEK_POINT,
 	STATUS_END
-    };
-    
-    enum MouseMode {
-	MOUSE_ADD,
-	MOUSE_FINISH
     };
     
     virtual ~DrawSketchHandlerSplitLine() {}
@@ -548,17 +543,13 @@ public:
     
     virtual bool pressButton(Base::Vector2D onSketchPos)
     {
-	// TODO: Choose a selection mode and remove the other
 	if (Mode == STATUS_SEEK_POINT && pointOnLine == true) {
-	    if (mMode == MOUSE_FINISH) {
-		Mode = STATUS_END;
-	    }
 	    splitPoints.push_back(currentSplitPoint);
 	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
 	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
 	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
 	}
-	else if(Mode == STATUS_SEEK_POINT && pointOnLine == false && mMode == MOUSE_ADD) {
+	else if(Mode == STATUS_SEEK_POINT && pointOnLine == false) {
 	    Mode = STATUS_END;
 	}
     }
@@ -595,19 +586,8 @@ public:
     
     void registerPressedKey(bool pressed, int key)
     {
-	// FIXME: holding down a key adds multiple points
 	switch (key)
 	{
-	    case SoKeyboardEvent::A:
-		// Add a split point
-		if (!pressed && pointOnLine == true && Mode == STATUS_SEEK_POINT) {
-		    splitPoints.push_back(currentSplitPoint);
-		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
-		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
-		    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
-		}
-		break;
-	    //case SoKeyboardEvent::F:
 	    case SoKeyboardEvent::ENTER:
 		// Finish point selection
 		if (!pressed) {
@@ -627,21 +607,11 @@ public:
 		    sketchgui->drawEdit(EditCurve);
 		}
 		break;
-	    case SoKeyboardEvent::Z:
-		// Swithc mouse selection mode. TODO: for testing, to be removed
-		if (!pressed && mMode == MOUSE_ADD) {
-		    mMode = MOUSE_FINISH;
-		}
-		else if (!pressed && mMode == MOUSE_FINISH) {
-		    mMode = MOUSE_ADD;
-		}
-		break;
 	}
     }    
     
 protected:
     SelectMode Mode;
-    MouseMode mMode;
     QCursor okCursor;
     std::vector<Base::Vector2D> EditCurve;
     bool pointOnLine;
@@ -723,7 +693,7 @@ CmdSketcherSplitLine::CmdSketcherSplitLine()
     sAppModule      = "Sketcher";
     sGroup          = QT_TR_NOOP("Sketcher");
     sMenuText       = QT_TR_NOOP("Split line");
-    sToolTipText    = QT_TR_NOOP("Splits the currently selected line into several connected lines. 'a' adds a split point, 'f' or Enter finishes selection");
+    sToolTipText    = QT_TR_NOOP("Splits the currently selected line into several connected lines. Enter finishes selection, 'r' removes previous point");
     sWhatsThis      = sToolTipText;
     sStatusTip      = sToolTipText;
     sPixmap         = "Sketcher_SplitLine";
@@ -751,7 +721,8 @@ bool CmdSketcherSplitLine::isActive(void)
 	Sketcher::PointPos PosId1;
 	getIdsFromName(SubNames[0], Obj, GeoId1, PosId1);
 	
-	if (!isEdge(GeoId1, PosId1) || GeoId1 < 0 || Obj->getGeometry(GeoId1)->getTypeId() != Part::GeomLineSegment::getClassTypeId()) return false;
+	// selection/undo bug elsewhere, or is this problematic?
+	//if (!isEdge(GeoId1, PosId1) || GeoId1 < 0 || Obj->getGeometry(GeoId1)->getTypeId() != Part::GeomLineSegment::getClassTypeId()) return false;
 	
 	return true;
 	
