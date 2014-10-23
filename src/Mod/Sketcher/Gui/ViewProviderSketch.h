@@ -373,6 +373,9 @@ protected:
     bool relative;
 
     Gui::Rubberband* rubberband;
+    
+    class SketcherClipPlane;
+    SketcherClipPlane * sketcherClipPlane;
 };
 
 } // namespace PartGui

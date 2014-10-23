@@ -55,6 +55,7 @@
 # include <Inventor/nodes/SoFont.h>
 # include <Inventor/nodes/SoPickStyle.h>
 # include <Inventor/nodes/SoCamera.h>
+# include <Inventor/nodes/SoClipPlane.h>
 
 /// Qt Include Files
 # include <QAction>
@@ -225,6 +226,68 @@ struct EditData {
     SoPickStyle   *pickStyleAxes;
 };
 
+class ViewProviderSketch::SketcherClipPlane {
+public:
+    SketcherClipPlane()
+    : enabled(false), offset(0.02)
+    {
+	
+	clipPlane = new SoClipPlane();
+	clipPlane->on.setValue(true);
+	clipPlane->plane.setValue(SbPlane(SbVec3f(1,0,0),0));
+	clipPlane->ref();	
+    }
+    
+    ~SketcherClipPlane()
+    {
+	clipPlane->unref();
+    }
+    
+    void enable()
+    {
+	enabled = true;
+	clipPlane->on.setValue(true);
+    }
+    
+    void disable()
+    {
+	enabled = false;
+	clipPlane->on.setValue(false);
+    }
+    
+    void addToSceneGraph(Gui::View3DInventorViewer* viewer)
+    {
+	SoGroup * node = static_cast<SoGroup*>(viewer->getSceneGraph());
+	node->insertChild(clipPlane, 0);
+    }
+    
+    void removeFromSceneGraph(Gui::View3DInventorViewer* viewer)
+    {
+	SoGroup * node = static_cast<SoGroup*>(viewer->getSceneGraph());
+	node->removeChild(clipPlane);
+    }
+    
+    void setPlacement(Base::Placement Plz)
+    {
+	Base::Vector3d R0(0,0,0),RN(0,0,1);
+
+	R0 = Plz.getPosition();
+	Base::Rotation tmp(Plz.getRotation());
+	tmp.multVec(RN,RN);
+    
+	SbVec3f normal(-RN.x, -RN.y, -RN.z);
+	normal.normalize();
+	SbVec3f point(R0.x, R0.y, R0.z);
+	point -= offset * normal;
+    
+	clipPlane->plane.setValue(SbPlane(normal, point));
+    }
+
+private:
+    bool enabled;
+    SoClipPlane * clipPlane;
+    double offset;
+};
 
 // this function is used to simulate cyclic periodic negative geometry indices (for external geometry)
 const Part::Geometry* GeoById(const std::vector<Part::Geometry*> GeoList, int Id)
@@ -287,11 +350,15 @@ ViewProviderSketch::ViewProviderSketch()
     
     //rubberband selection
     rubberband = new Gui::Rubberband();
+    
+    sketcherClipPlane = new SketcherClipPlane(); 
 }
 
 ViewProviderSketch::~ViewProviderSketch()
 {
     delete rubberband;
+    
+    delete sketcherClipPlane;
 }
 
 // handler management ***************************************************************
@@ -3719,6 +3786,8 @@ bool ViewProviderSketch::setEdit(int ModNum)
     highlight = (unsigned long)(SelectColor.getPackedValue());
     highlight = hGrp->GetUnsigned("SelectionColor", highlight);
     SelectColor.setPackedValue((uint32_t)highlight, transparency);
+    
+    sketcherClipPlane->setPlacement(getSketchObject()->Placement.getValue());
 
     // start the edit dialog
     if (sketchDlg)
@@ -4042,10 +4111,13 @@ void ViewProviderSketch::setEditViewer(Gui::View3DInventorViewer* viewer, int Mo
     
     viewer->addGraphicsItem(rubberband);
     rubberband->setViewer(viewer);
+    
+    sketcherClipPlane->addToSceneGraph(viewer);
 }
 
 void ViewProviderSketch::unsetEditViewer(Gui::View3DInventorViewer* viewer)
 {
+    sketcherClipPlane->removeFromSceneGraph(viewer);
     viewer->removeGraphicsItem(rubberband);
     viewer->setEditing(FALSE);
     SoNode* root = viewer->getSceneGraph();
