@@ -24,6 +24,14 @@
 #include "PreCompiled.h"
 #ifndef _PreComp_
 # include <QMessageBox>
+# include <Inventor/nodes/SoSeparator.h>
+# include <Inventor/nodes/SoMaterial.h>
+# include <Inventor/nodes/SoMaterialBinding.h>
+# include <Inventor/nodes/SoCoordinate3.h>
+# include <Inventor/nodes/SoDrawStyle.h>
+# include <Inventor/nodes/SoMarkerSet.h>
+# include <Inventor/SbColor.h>
+# include <Inventor/nodes/SoLineSet.h>
 #endif
 
 #include <Gui/Application.h>
@@ -481,7 +489,7 @@ class DrawSketchHandlerSplitLine: public DrawSketchHandler
 {
 
 public:
-    DrawSketchHandlerSplitLine() : Mode(STATUS_START), EditCurve(3), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0),  okCursor(QPixmap(cursor_splitline_ok), 7, 7) {}
+    DrawSketchHandlerSplitLine() : Mode(STATUS_START), pointOnLine(false), lineId(Constraint::GeoUndef), splitPoints(0),  okCursor(QPixmap(cursor_splitline_ok), 7, 7) {}
 
     // mode table
     enum SelectMode {
@@ -499,8 +507,60 @@ public:
 	    sketchgui->purgeHandler(); // no code after this line, Handler get deleted in ViewProvider
 	}
 	Mode = STATUS_SEEK_POINT;
-	// TODO: proper visualisation of selected points
-	EditCurve[0] = Base::Vector2D(startPoint.x, startPoint.y);
+	
+	// create nodes for split point visualization
+	SoSeparator * pointsRoot = new SoSeparator;
+	getHandlerRoot()->addChild(pointsRoot);
+	
+	SplitPointsMaterials = new SoMaterial;
+	SplitPointsMaterials->setName("SplitPointsMaterials");
+	pointsRoot->addChild(SplitPointsMaterials);
+
+	SoMaterialBinding *MtlBind = new SoMaterialBinding;
+	MtlBind->setName("SplitPointsMaterialBinding");
+	MtlBind->value = SoMaterialBinding::PER_VERTEX;
+	pointsRoot->addChild(MtlBind);
+
+	SplitPointsCoordinate = new SoCoordinate3;
+	SplitPointsCoordinate->setName("SplitPointsCoordinate");
+	pointsRoot->addChild(SplitPointsCoordinate);
+
+	SoDrawStyle *DrawStyle = new SoDrawStyle;
+	DrawStyle->setName("SplitPointsDrawStyle");
+	DrawStyle->pointSize = 8;
+	pointsRoot->addChild(DrawStyle);
+
+	SoMarkerSet * PointSet = new SoMarkerSet;
+	PointSet->setName("PointSet");
+	PointSet->markerIndex = SoMarkerSet::CIRCLE_FILLED_7_7;
+	pointsRoot->addChild(PointSet);
+	
+	// Splitter line
+	SoSeparator * SplitterLineRoot = new SoSeparator;
+	getHandlerRoot()->addChild(SplitterLineRoot);
+	
+	SplitterLineMaterial = new SoMaterial;
+	SplitterLineMaterial->setName("SplitterLineMaterial");
+	SplitterLineRoot->addChild(SplitterLineMaterial);
+	
+	SplitterLineCoordinate = new SoCoordinate3;
+	SplitterLineCoordinate->setName("SplitterLineCoordinate");
+	SplitterLineCoordinate->point.setNum(2);
+	SplitterLineRoot->addChild(SplitterLineCoordinate);
+	
+	DrawStyle = new SoDrawStyle;
+	DrawStyle->setName("SplitterLineDrawStyle");
+	DrawStyle->lineWidth = 3;
+	DrawStyle->linePattern = 0xf0f0;
+	SplitterLineRoot->addChild(DrawStyle);
+	
+	SplitterLineSet = new SoLineSet;
+	SplitterLineSet->setName("SplitterLineSet");
+	SplitterLineSet->numVertices.setNum(1);
+	SplitterLineRoot->addChild(SplitterLineSet);
+	
+	zHandler = getzHandler();
+	SplitPointColor.setValue(0,1,0);
     }
     
     virtual void mouseMove(Base::Vector2D onSketchPos)
@@ -527,27 +587,45 @@ public:
 	
 	if (Mode == STATUS_SEEK_POINT) {
 	    if (pointOnLine == true) {
-		EditCurve[EditCurve.size()-2] = Base::Vector2D(linePos3.x, linePos3.y);
-		EditCurve[EditCurve.size()-1] = onSketchPos;
-		setPositionText(EditCurve[EditCurve.size()-1]);
+		setPositionText(Base::Vector2D(linePos3.x, linePos3.y));
+		SplitterLineSet->numVertices.setNum(1);
+		SplitterLineCoordinate->point.setNum(2);
+		SbVec3f * verts = SplitterLineCoordinate->point.startEditing();
+		int32_t * index = SplitterLineSet->numVertices.startEditing();
+		verts[0].setValue(onSketchPos.fX, onSketchPos.fY, zHandler);
+		verts[1].setValue(linePos3.x, linePos3.y, zHandler);
+		index[0] = 2;
+		SplitterLineCoordinate->point.finishEditing();
+		SplitterLineSet->numVertices.finishEditing();
 		currentSplitPoint = linePos3;
 	    }
 	    else {
-		EditCurve[EditCurve.size()-1] = EditCurve[EditCurve.size()-2] = EditCurve[EditCurve.size()-3];
-		resetPositionText();
+
+		SbVec3f * verts = SplitterLineCoordinate->point.startEditing();
+		SplitterLineSet->numVertices.startEditing();
+		verts[0].setValue(0,0,0);
+		verts[1].setValue(0,0,0);
+		SplitterLineCoordinate->point.finishEditing();
+		SplitterLineSet->numVertices.finishEditing();
+		setPositionText(onSketchPos, "OK");
 	    }
 	}
-	
-	sketchgui->drawEdit(EditCurve);	
     }
     
     virtual bool pressButton(Base::Vector2D onSketchPos)
     {
 	if (Mode == STATUS_SEEK_POINT && pointOnLine == true) {
 	    splitPoints.push_back(currentSplitPoint);
-	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
-	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
-	    EditCurve.push_back(Base::Vector2D(currentSplitPoint.x, currentSplitPoint.y));
+	    
+	    SplitPointsCoordinate->point.setNum(splitPoints.size());
+	    SbVec3f * pverts = SplitPointsCoordinate->point.startEditing();
+	    pverts[splitPoints.size()-1].setValue(currentSplitPoint.x, currentSplitPoint.y, zHandler);
+	    SplitPointsCoordinate->point.finishEditing();
+	    
+	    SplitPointsMaterials->diffuseColor.setNum(splitPoints.size());
+	    SbColor * pcolor = SplitPointsMaterials->diffuseColor.startEditing();
+	    pcolor[splitPoints.size()-1] = SplitPointColor;
+	    SplitPointsMaterials->diffuseColor.finishEditing();
 	}
 	else if(Mode == STATUS_SEEK_POINT && pointOnLine == false) {
 	    Mode = STATUS_END;
@@ -577,8 +655,6 @@ public:
 	    
 	    unsetCursor();
 	    resetPositionText();
-	    EditCurve.clear();
-	    sketchgui->drawEdit(EditCurve);
 	    Gui::Selection().clearSelection();
 	    sketchgui->purgeHandler();
 	}
@@ -599,12 +675,8 @@ public:
 		// Remove the previously added point
 		if (!pressed && !splitPoints.empty()) {
 		    splitPoints.pop_back();
-		    EditCurve[EditCurve.size()-5] = EditCurve[EditCurve.size()-2];
-		    EditCurve[EditCurve.size()-4] = EditCurve[EditCurve.size()-1];
-		    EditCurve.pop_back();
-		    EditCurve.pop_back();
-		    EditCurve.pop_back();
-		    sketchgui->drawEdit(EditCurve);
+		    SplitPointsCoordinate->point.setNum(splitPoints.size());
+		    SplitPointsMaterials->diffuseColor.setNum(splitPoints.size());
 		}
 		break;
 	}
@@ -613,13 +685,18 @@ public:
 protected:
     SelectMode Mode;
     QCursor okCursor;
-    std::vector<Base::Vector2D> EditCurve;
     bool pointOnLine;
     int lineId;
     Base::Vector3d startPoint, endPoint, origLineDir, startPointDist;
     std::vector<Base::Vector3d> splitPoints;
     Base::Vector3d currentSplitPoint;
-    
+    float zHandler;
+    SoCoordinate3 * SplitPointsCoordinate;
+    SbColor SplitPointColor;
+    SoMaterial * SplitPointsMaterials;
+    SoMaterial * SplitterLineMaterial;
+    SoCoordinate3 * SplitterLineCoordinate;
+    SoLineSet * SplitterLineSet;
     
     bool checkSelection()
     {

@@ -336,6 +336,9 @@ protected:
     void addSelectPoint(int SelectPoint);
     void removeSelectPoint(int SelectPoint);
     void clearSelectPoints(void);
+    
+    // for DrawSketchHandler
+    SoSeparator * getHandlerRoot();
 
     // modes while sketching
     SketchMode Mode;
@@ -367,6 +370,7 @@ protected:
     float zText;
     float zEdit;
     float zHighLine;
+    float zHandler;
 
     // reference coordinates for relative operations
     double xInit,yInit;

@@ -157,7 +157,8 @@ struct EditData {
     PointsCoordinate(0),
     CurvesCoordinate(0),
     CurveSet(0), RootCrossSet(0), EditCurveSet(0),
-    PointSet(0), pickStyleAxes(0)
+    PointSet(0), pickStyleAxes(0),
+    HandlerRoot(0)
     {}
 
     // pointer to the active handler for new sketch objects
@@ -222,6 +223,8 @@ struct EditData {
 
     SoGroup       *constrGroup;
     SoPickStyle   *pickStyleAxes;
+    
+    SoSeparator * HandlerRoot;
 };
 
 
@@ -262,6 +265,7 @@ ViewProviderSketch::ViewProviderSketch()
     zHighlight=0.009f;
     zText=0.011f;
     zEdit=0.001f;
+    zHandler=0.012f;
 
     xInit=0;
     yInit=0;
@@ -3989,6 +3993,11 @@ void ViewProviderSketch::createEditInventorNodes(void)
     edit->constrGroup = new SoGroup();
     edit->constrGroup->setName("ConstraintGroup");
     edit->EditRoot->addChild(edit->constrGroup);
+    
+    // For DrawSketchHandler
+    edit->HandlerRoot = new SoSeparator();
+    edit->HandlerRoot->setName("HandlerRoot");
+    edit->EditRoot->addChild(edit->HandlerRoot);
 }
 
 void ViewProviderSketch::unsetEdit(int ModNum)
@@ -4278,4 +4287,9 @@ bool ViewProviderSketch::onDelete(const std::vector<std::string> &subList)
     }
     // if not in edit delete the whole object
     return true;
+}
+
+SoSeparator * ViewProviderSketch::getHandlerRoot()
+{
+    return edit->HandlerRoot;
 }

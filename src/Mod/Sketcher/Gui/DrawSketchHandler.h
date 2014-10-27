@@ -101,6 +101,10 @@ protected:
     void unsetCursor(void);
     void applyCursor(void);
     void applyCursor(QCursor &newCursor);
+    
+    // Return the HandlerRoot node for derived classes to insert their nodes
+    SoSeparator * getHandlerRoot();
+    float getzHandler();
 
     ViewProviderSketch *sketchgui;
     QCursor oldCursor;

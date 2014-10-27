@@ -28,6 +28,7 @@
 # include <Inventor/nodes/SoTranslation.h>
 # include <Inventor/nodes/SoText2.h>
 # include <Inventor/nodes/SoFont.h>
+# include <Inventor/nodes/SoSeparator.h>
 # include <QPainter>
 #endif
 
@@ -66,7 +67,7 @@ DrawSketchHandler::DrawSketchHandler()
 
 DrawSketchHandler::~DrawSketchHandler()
 {
-
+    getHandlerRoot()->removeAllChildren();
 }
 
 void DrawSketchHandler::quit(void)
@@ -421,4 +422,14 @@ void DrawSketchHandler::setPositionText(const Base::Vector2D &Pos)
 void DrawSketchHandler::resetPositionText(void)
 {
     sketchgui->resetPositionText();
+}
+
+SoSeparator * DrawSketchHandler::getHandlerRoot()
+{
+    return sketchgui->getHandlerRoot();
+}
+
+float DrawSketchHandler::getzHandler()
+{
+    return sketchgui->zHandler;
 }
